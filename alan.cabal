@@ -26,6 +26,8 @@ library
                      , aeson        >= 0.10.0.0 && < 1
                      , process      >= 1.2.3.0  && < 2
                      , ghc-paths    >= 0.1.0.9  && < 1
+                     , bytestring   >= 0.10.6.0 && < 1
+                     , cryptohash   >= 0.11.6   && < 1
                      , optparse-applicative >= 0.12.0.0 && < 1
                      -- TODO optional
                      , hint         >= 0.4.2.3  && < 1
