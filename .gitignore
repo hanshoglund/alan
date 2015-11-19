@@ -1,0 +1,5 @@
+.cabal-sandbox
+cabal.sabdbox*
+dist
+cabal.sandbox/*
+cabal.sandbox*
