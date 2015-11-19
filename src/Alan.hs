@@ -141,13 +141,16 @@ addStage overwrite dependencies = do
     liftIO $ System.Directory.createDirectoryIfMissing True stageDir
     -- TODO cabal path
     (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["sandbox", "init",
-      "--sandbox", stageDir ++ "/sandbox"]
+      "--sandbox", stageDir ++ "/sb"]
     liftIO $ System.Process.waitForProcess p
     return ()
 
   forM_ dependencies $ \(name,version) -> do
     let x = name ++ "-" ++ showVersion version
-    (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["install", x]
+    (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["install", x
+      -- ,
+      -- "--sandbox", stageDir ++ "/sandbox"
+      ]
     liftIO $ System.Process.waitForProcess p
     return ()
 
@@ -168,7 +171,7 @@ start (Stage stageId) sources = do
   -- Generate performer id (stageId+unique Message)
   let stageDir     = alanDir ++ "/" ++ stageId
   -- TODO replace arch/OS/GHC version here by parsing cabal.sandbox.config and looking at package-db: field
-  let packDbDir    = stageDir ++ "/sandbox/x86_64-osx-ghc-7.10.2-packages.conf.d"
+  let packDbDir    = stageDir ++ "/sb/x86_64-osx-ghc-7.10.2-packages.conf.d"
   let performerDir = alanDir ++ "/performers/" ++ performerId
 
   -- TODO verify paths
