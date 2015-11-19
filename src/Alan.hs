@@ -14,11 +14,11 @@ Alan performers can peform arbitrary computation, but I/O is restricted to
 The Safe Haskell restriction (which essentially forbids unsafePerformIO) is used to enforce this.
 
 
-Executables:
-  alan-server --port 8675 &
+Usage:
+  alan serve --port 8675 &
 
-  alan add-stage stage1
-  alan start --url localhost --port 8675 stage1 -I . Main.hs
+  alan add-stage mystage
+  alan start --url localhost --port 8675 mystage -I . Main.hs
     Launches a new service, prints process ID.
   alan send localhost a2b4c1b2 {"command":"status"}
 
@@ -37,6 +37,7 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Supply
 import Data.Version
+import System.Process
 
 
 -- API
