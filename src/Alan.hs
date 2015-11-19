@@ -1,5 +1,5 @@
 
-{-# LANGUAGE RankNTypes, ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes, ExistentialQuantification, GeneralizedNewtypeDeriving #-}
 
 {-
 Alan is a HTTP server that compiles/interprets Haskell code.
@@ -36,6 +36,8 @@ module Alan (
   Message,
   Persistent,
   AlanProc(..),
+  AlanConfiguration(..),
+  defAlanConfiguration,
   Alan,
   runAlan,
   Stage,
@@ -61,6 +63,9 @@ import Data.Aeson (ToJSON, FromJSON)
 import qualified Numeric
 import qualified Crypto.Hash.MD5 as MD5
 import Data.ByteString as LBS
+import qualified System.Directory
+import qualified System.Process
+import qualified Data.Maybe
 
 
 -- API
@@ -72,6 +77,11 @@ data AlanConfiguration  = AlanConfiguration {
   alanConfGhcExecutable :: FilePath,
   alanConfCabal         :: FilePath,
   alanConfAlanDirectory :: Maybe FilePath
+  }
+defAlanConfiguration = AlanConfiguration {
+  alanConfGhcExecutable = "ghc",
+  alanConfCabal         = "cabal",
+  alanConfAlanDirectory = Nothing
   }
 
 
@@ -85,31 +95,52 @@ data AlanProc = forall s . AlanProc (Maybe Persistent -> (s, Message -> s -> (Ma
 alanId :: AlanProc
 alanId = AlanProc $ \_ -> ((), \m () -> (Nothing, Just m, ()))
 
+-- All persistant state is stored in the Alan directory
+-- All processes spawned by Alan are non-daemons, so no process leaks are possible
 newtype Alan a = Alan
   (ReaderT AlanConfiguration
     (ExceptT AlanError IO)
     a)
-
+    deriving (Functor, Applicative, Monad, MonadError AlanError, MonadIO, MonadReader AlanConfiguration)
 
 -- Server is started with
 runAlan
     :: AlanConfiguration
     -> Alan a
     -> IO (Either String a)
-runAlan = undefined
--- runAlan = runErrorT
+runAlan conf (Alan x) = runExceptT (runReaderT x conf)
 
-data Stage -- JSON
-data Performer -- JSON
+data Stage = Stage String -- Must be JSONable
+data Performer = Performer String -- Must be JSONable
 
-type Package    = [(String, Version)] -- I.e. [("aeson", fromString "0.10.0.0")]
+type Package    = (String, Version) -- I.e. [("aeson", fromString "0.10.0.0")]
 type SourceTree = [(FilePath, String)] -- I.e. [("Main.hs","module Main where alan = ...")]
 
 try :: Alan a -> Alan (Either AlanError a)
 
 addStage :: Bool -> [Package] -> Alan Stage
+addStage overwrite dependencies = do
+  -- Generate stage ID (hash of deps)
+  -- TODO could create races if multiple alans are run on the same dir (A is building a stage, B obverve it as already existing)
 
-    -- Generate stage ID (hash of deps)
+  let stageId = hashJson $ (fmap (fmap show) dependencies)
+  homeDir <- liftIO $ System.Directory.getHomeDirectory
+  alanDir <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory) ask
+  let stageDir = alanDir ++ "/" ++ stageId
+  when overwrite $ liftIO $ System.Directory.removeDirectoryRecursive stageDir
+  liftIO $ System.Directory.createDirectoryIfMissing True stageDir
+
+  -- TODO cabal path
+  -- (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["sandbox", "init"]
+  -- liftIO $ System.Process.waitForProcess p
+
+  forM_ dependencies $ \(name,version) -> do
+    let x = name ++ "-" ++ showVersion version
+    (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["install", x]
+    liftIO $ System.Process.waitForProcess p
+    return ()
+
+  return $ Stage stageId
     -- If Bool is true, wipe out preexisting stage and restart
     -- Create stage if not existing
       -- Go to SB dir
@@ -119,8 +150,41 @@ addStage :: Bool -> [Package] -> Alan Stage
     -- Return Stage (with id)
 
 start :: Stage -> SourceTree -> Alan Performer
-
+start (Stage stageId) sources = do
+  let performerId = hashJson $ (sources,stageId)
+  homeDir <- liftIO $ System.Directory.getHomeDirectory
+  alanDir <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory) ask
   -- Generate performer id (stageId+unique Message)
+  let performerDir = alanDir ++ "/performers/" ++ performerId
+
+  -- TODO same race problem as above
+  -- TODO verify paths
+  -- TODO ghc path
+  -- TODO assumes Main.hs exists
+  there <- liftIO $ System.Directory.doesDirectoryExist performerDir
+  unless there $ do
+    liftIO $ System.Directory.createDirectoryIfMissing True performerDir
+    return ()
+
+  -- TODO always write files for now
+  forM_ sources $ \(path,code) -> do
+    -- TODO assure subdirs!
+    liftIO $ System.IO.writeFile (performerDir ++ "/" ++ path) code
+    return ()
+
+  -- TODO always recompile for now
+  (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
+    System.Process.proc "ghc" [
+      -- package db
+      "-threaded",
+      "-O2",
+      "-i"++performerDir, -- or .
+      "--make", "Main.hs",
+      "-o", performerDir ++ "/AlanMain"
+      ]
+  liftIO $ System.Process.waitForProcess p
+  (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
+    System.Process.proc (performerDir ++ "/AlanMain") []
 
   -- Go to perf dir, place sources here
     -- <alanDir>/performers/<performerId>
@@ -129,16 +193,19 @@ start :: Stage -> SourceTree -> Alan Performer
   -- Performers are NOT daemons
 
 -- compile/eval code, using package DBs from Stage
+  return $ Performer performerId
+
+
 send :: Performer -> Message -> Alan Message
   -- Write to input
   -- Block waiting for output
 
-[try,addStage,start,send] = undefined
+[try,send] = undefined
 
 -- TODO this has to be added to incoming SourceTrees
 alanMain :: AlanProc -> IO ()
 alanMain (AlanProc startup) = do
-  -- Messages are lines to stdin/stdout (TODO escape newlines)
+  -- Messages are lines to stdin/stdout (TODO escape newlines, or even use fancy binary modes)
   -- Persistance not implemented (requires identiciation of processes as per above)
   let (initState, update) = startup Nothing
   recur update initState
@@ -174,7 +241,7 @@ alanMain (AlanProc startup) = do
 
 -- | Hash any object with a JSON representation
 hashJson :: ToJSON a => a -> String
-hashJson = (=<<) (twoChars . ($ "") . Numeric.showHex) . LBS.unpack . toHash
+hashJson = (=<<) (twoChars . ($ "") . Numeric.showHex) . LBS.unpack .  toHash
   where
         toHash = MD5.hashlazy . Data.Aeson.encode
         twoChars [a   ] = ['0', a]
