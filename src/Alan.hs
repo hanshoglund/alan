@@ -1,11 +1,34 @@
 
+{-# LANGUAGE RankNTypes, ExistentialQuantification #-}
+
 {-
-Alan is a server that compiles and launches Haskell services using GHC and Cabal.
+Alan is a HTTP server that compiles/interprets Haskell code.
+Code generates a server (called Performers) which can be interacted with through the parent Alan server.
+Every performer runs in a sandbox (called Stage), and is isolated from other performers.
 
-Every service is sandboxed and runs as a separate process. Services are restricted to send and recieve JSON messages and
-alter service-specific JSON state.
+Alan performers can peform arbitrary computation, but I/O is restricted to
+  - sending and recieving messages
+  - altering a local state
+  - (optionally)
 
-Use Safe Haskell by default.
+The Safe Haskell restriction (which essentially forbids unsafePerformIO) is used to enforce this.
+
+
+Executables:
+  alan-server --port 8675 &
+
+  alan add-stage stage1
+  alan start --url localhost --port 8675 stage1 -I . Main.hs
+    Launches a new service, prints process ID.
+  alan send localhost a2b4c1b2 {"command":"status"}
+
+Implementation:
+  Needs to:
+    Compile/Eval code
+    Download code from Hackage/Stackage
+    Create a package DB (ghc-pkg, poss. with stack or cabal-install)
+
+
 
 -}
 module Alan where
@@ -15,20 +38,22 @@ import Control.Monad.Reader
 import Data.Supply
 import Data.Version
 
+
+-- API
+
 type GhcFilePath        = FilePath
 type CabalFilePath      = FilePath
-type SandboxDirFilePath = FilePath
+type StageDirFilePath = FilePath
 type AlanError          = String
 
-type Value = () -- TODO JSON
-type State = Value
+type Value = Int -- TODO JSON
+type Persistent = Int -- TODO JSON
 
 -- The running procs are restricted to this type
-type AlanProc = Value -> State -> (Value, State)
-
+data AlanProc = forall s . AlanProc (Maybe Persistent -> Value -> s -> (Maybe Persistent, Value, s))
 
 newtype Alan a = Alan
-  (ReaderT (GhcFilePath, CabalFilePath, SandboxDirFilePath)
+  (ReaderT (GhcFilePath, CabalFilePath, StageDirFilePath)
     (ExceptT AlanError IO)
     a)
 
@@ -36,33 +61,54 @@ newtype Alan a = Alan
 -- Server is started with
 runAlan
     :: GhcFilePath
-    -> CabalFilePathx
-    -> SandboxDirFilePath
+    -> CabalFilePath
+    -> StageDirFilePath
     -> Alan a
     -> IO (Either String a)
 runAlan = undefined
 -- runAlan = runErrorT
 
-data Sandbox -- JSON
-data Process -- JSON
+data Stage -- JSON
+data Performer -- JSON
 
 type PackageDescr = [(String,Version)]
 type SourceTree = [(FilePath,String)]
 
 try :: Alan a -> Alan (Either AlanError a)
-addSandbox :: [PackageDescr] -> Alan Sandbox
-start :: Sandbox -> SourceTree -> Alan Process
-send :: Process -> Value -> Alan Value
+addStage :: [PackageDescr] -> Alan Stage
+-- setup a package db
+start :: Stage -> SourceTree -> Alan Performer
+-- compile/eval code, using package DBs from Stage
+send :: Performer -> Value -> Alan Value
+[try,addStage,start,send] = undefined
 
-[try,addSandbox,start,send] = undefined
+
+-- IMPL
+
+-- Implementation 1: GHC/Cabal sandbox
+-- Implementation 2: GHC/Cabal stack
+-- Implementation 3: Hint/Cabal sanbox
+-- Implementation 4: GHCJS
+
+
+
+
+-- TEST
+
+alan1 :: AlanProc
+alan1 = AlanProc $ \_ n s -> (Nothing, n+s, n+s)
+
+
+
+
 --
--- POST /sandboxes
---   [(package name,version)] -> Alan Sandbox
---       creates sandbox
+-- POST /Stagees
+--   [(package name,version)] -> Alan Stage
+--       creates Stage
 --       installs packages
 -- POST /start
---   Sandbox -> [(source file tree,main file)] -> Alan Process
---     compiles and launces a process
+--   Stage -> [(source file tree,main file)] -> Alan Performer
+--     compiles and launces a Performer
 --     passed source MUST define a AlanProc value as "main" (IO not accepted)
 -- POST /send
---   Process -> [Value] -> Alan [Value]
+--   Performer -> [Value] -> Alan [Value]
