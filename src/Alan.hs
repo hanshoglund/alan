@@ -120,21 +120,30 @@ type SourceTree = [(FilePath, String)] -- I.e. [("Main.hs","module Main where al
 
 try :: Alan a -> Alan (Either AlanError a)
 
+-- TODO addStage could create races if multiple alans are run on the same dir (A is building a stage, B obverve it as already existing)
+-- TODO start has similar problem
+-- For now, document that only one instance of alan should be run over an alan directory (they can run over different directories though)
+-- Eventually lock on PID or similar (i.e. alan server writes its PID to the alan dir before operating and refuses to proceed
+-- if a process with that PID exists on the system)
+
 addStage :: Bool -> [Package] -> Alan Stage
 addStage overwrite dependencies = do
   -- Generate stage ID (hash of deps)
-  -- TODO could create races if multiple alans are run on the same dir (A is building a stage, B obverve it as already existing)
-
   let stageId = hashJson $ (fmap (fmap show) dependencies)
   homeDir <- liftIO $ System.Directory.getHomeDirectory
   alanDir <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory) ask
   let stageDir = alanDir ++ "/" ++ stageId
-  when overwrite $ liftIO $ System.Directory.removeDirectoryRecursive stageDir
-  liftIO $ System.Directory.createDirectoryIfMissing True stageDir
 
-  -- TODO cabal path
-  -- (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["sandbox", "init"]
-  -- liftIO $ System.Process.waitForProcess p
+  there <- liftIO $ System.Directory.doesDirectoryExist stageDir
+  when (there && overwrite) $ liftIO $ System.Directory.removeDirectoryRecursive stageDir
+
+  unless there $ do
+    liftIO $ System.Directory.createDirectoryIfMissing True stageDir
+    -- TODO cabal path
+    (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["sandbox", "init",
+      "--sandbox", stageDir ++ "/sandbox"]
+    liftIO $ System.Process.waitForProcess p
+    return ()
 
   forM_ dependencies $ \(name,version) -> do
     let x = name ++ "-" ++ showVersion version
@@ -159,10 +168,9 @@ start (Stage stageId) sources = do
   -- Generate performer id (stageId+unique Message)
   let stageDir     = alanDir ++ "/" ++ stageId
   -- TODO replace arch/OS/GHC version here by parsing cabal.sandbox.config and looking at package-db: field
-  let packDbDir    = stageDir ++ "/.cabal-sandbox/x86_64-osx-ghc-7.10.2-packages.conf.d"
+  let packDbDir    = stageDir ++ "/sandbox/x86_64-osx-ghc-7.10.2-packages.conf.d"
   let performerDir = alanDir ++ "/performers/" ++ performerId
 
-  -- TODO same race problem as above
   -- TODO verify paths
   -- TODO ghc path
   -- TODO assumes Main.hs exists
