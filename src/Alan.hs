@@ -111,7 +111,9 @@ runAlan
 runAlan conf (Alan x) = runExceptT (runReaderT x conf)
 
 data Stage = Stage String -- Must be JSONable
+  deriving (Show)
 data Performer = Performer String -- Must be JSONable
+  deriving (Show)
 
 type Package    = (String, Version) -- I.e. [("aeson", fromString "0.10.0.0")]
 type SourceTree = [(FilePath, String)] -- I.e. [("Main.hs","module Main where alan = ...")]
@@ -155,6 +157,9 @@ start (Stage stageId) sources = do
   homeDir <- liftIO $ System.Directory.getHomeDirectory
   alanDir <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory) ask
   -- Generate performer id (stageId+unique Message)
+  let stageDir     = alanDir ++ "/" ++ stageId
+  -- TODO replace arch/OS/GHC version here by parsing cabal.sandbox.config and looking at package-db: field
+  let packDbDir    = stageDir ++ "/.cabal-sandbox/x86_64-osx-ghc-7.10.2-packages.conf.d"
   let performerDir = alanDir ++ "/performers/" ++ performerId
 
   -- TODO same race problem as above
@@ -173,9 +178,11 @@ start (Stage stageId) sources = do
     return ()
 
   -- TODO always recompile for now
+  -- TODO compile errors seem to be bounced back to Alan Process
+  -- is this always the case? If so: catch
   (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
     System.Process.proc "ghc" [
-      -- package db
+      "-package-db=" ++ packDbDir,
       "-threaded",
       "-O2",
       "-i"++performerDir, -- or .
