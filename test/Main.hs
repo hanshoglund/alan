@@ -30,9 +30,9 @@ readDeps path = do
 
 main = do
   runAlan defAlanConfiguration $ do
-    deps <- liftIO $ readDeps "/Users/Hoglund/suite/DEPS"
+    -- deps <- liftIO $ readDeps "/Users/Hoglund/suite/DEPS"
+    let deps = [("music-pitch-literal", makeVersion[1,9,0])]
     s <- addStage False deps
-    -- [("music-score", makeVersion[1,9,0])]
     pf <- start s [
       ("Alpha.hs",  "module Alpha where beta = 'b'"),
       ("Beta.hs",   "module Beta where import Music.Pitch.Literal; beta = 'b'"),

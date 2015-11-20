@@ -145,12 +145,16 @@ addStage overwrite dependencies = do
     liftIO $ System.Process.waitForProcess p
     return ()
 
-  forM_ dependencies $ \(name,version) -> do
-    let x = name ++ "-" ++ showVersion version
-    (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["install", x
-      -- ,
-      -- "--sandbox", stageDir ++ "/sandbox"
-      ]
+  -- forM_ dependencies $ \(name,version) -> do
+  --   let x = name ++ "-" ++ showVersion version
+  --   (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["install", x
+  --     -- ,
+  --     -- "--sandbox", stageDir ++ "/sandbox"
+  --     ]
+  --   liftIO $ System.Process.waitForProcess p
+  --   return ()
+    (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" (["-j", "install"]
+      ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version) dependencies)
     liftIO $ System.Process.waitForProcess p
     return ()
 
