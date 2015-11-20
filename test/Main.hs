@@ -36,7 +36,7 @@ main = do
     pf <- start s [
       ("Alpha.hs",  "module Alpha where beta = 'b'"),
       ("Beta.hs",   "module Beta where import Music.Pitch.Literal; beta = 'b'"),
-      ("Main.hs",   "module Main where import Music.Pitch.Literal; import Beta(beta); main = writeFile \"Output.txt\" (show (take 200 $ repeat $ (gs::Int)) ++ \"\\nDone!\\n\") ")]
+      ("Main.hs",   "module Main where import Music.Pitch.Literal; import Beta(beta); main = writeFile \"Output.txt\" (show (take 201 $ repeat $ (gs::Int)) ++ \"\\nDone!\\n\") ")]
     -- addStage False [("music-pitch-literal", makeVersion[1,9,0])]
     -- addStage False [
         -- ("music-pitch-literal", makeVersion[1,9,0])

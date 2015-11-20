@@ -3,6 +3,7 @@
 
 {-
 Alan is a HTTP server that compiles/interprets Haskell code.
+
 Code generates a server (called Performers) which can be interacted with through the parent Alan server.
 Every performer runs in a sandbox (called Stage), and is isolated from other performers.
 
