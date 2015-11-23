@@ -33,11 +33,13 @@ module Alan (
   AlanServerError,
   Message,
   Persistent,
-  AlanProc(..),
+
   AlanConfiguration(..),
   defAlanConfiguration,
+
   AlanServer,
   runAlanServer,
+
   Stage,
   Performer,
   Package,
@@ -109,7 +111,8 @@ import System.Exit (ExitCode(..))
 
 -- API
 
-type AlanServerError          = String
+type AlanServerError = String
+
 data AlanConfiguration  = AlanConfiguration {
   -- At the moment, each Alan server requires a preinstalled GHC and Cabal
   -- Might be changed
@@ -126,13 +129,6 @@ defAlanConfiguration = AlanConfiguration {
 
 type Message = String -- TODO JSON
 type Persistent = String -- TODO JSON
-
--- The running procs are restricted to this type
-data AlanProc = forall s . AlanProc (Maybe Persistent -> (s, Message -> s -> (Maybe Persistent, Maybe Message, s)))
--- TODO Al monad
--- runAl Al () -> AlanProc
-alanId :: AlanProc
-alanId = AlanProc $ \_ -> ((), \m () -> (Nothing, Just m, ()))
 
 newtype AlanState = AlanState { alanStateConf :: AlanConfiguration }
 
@@ -279,46 +275,42 @@ send :: Performer -> Message -> AlanServer ()
 
 [send] = undefined
 
--- TODO remove Main from incoming code and add something like this
-alanMain :: AlanProc -> IO ()
-alanMain (AlanProc startup) = do
-  -- Messages are lines to stdin/stdout (TODO escape newlines, or even use fancy binary modes)
-  -- Persistance not implemented (requires identiciation of processes as per above)
-  let (initState, update) = startup Nothing
-  recur update initState
-  where
-    recur update state = do
-        msg <- System.IO.getLine
-        let (_, mOut, state') = update msg state
-        -- send message
-        case mOut of
-          Nothing -> return ()
-          Just msg -> System.IO.putStrLn msg
-        recur update state'
+-- -- The running procs are restricted to this type
+-- data AlanProc = forall s . AlanProc (Maybe Persistent -> (s, Message -> s -> (Maybe Persistent, Maybe Message, s)))
+-- -- TODO Al monad
+-- -- runAl Al () -> AlanProc
+-- alanId :: AlanProc
+-- alanId = AlanProc $ \_ -> ((), \m () -> (Nothing, Just m, ()))
+--
+-- -- TODO remove Main from incoming code and add something like this
+-- alanMain :: AlanProc -> IO ()
+-- alanMain (AlanProc startup) = do
+--   -- Messages are lines to stdin/stdout (TODO escape newlines, or even use fancy binary modes)
+--   -- Persistance not implemented (requires identiciation of processes as per above)
+--   let (initState, update) = startup Nothing
+--   recur update initState
+--   where
+--     recur update state = do
+--         msg <- System.IO.getLine
+--         let (_, mOut, state') = update msg state
+--         -- send message
+--         case mOut of
+--           Nothing -> return ()
+--           Just msg -> System.IO.putStrLn msg
+--         recur update state'
 
--- IMPL
+-- UTIL
 
--- Implementation 1: GHC/Cabal sandbox
-
-
--- Implementation 2: GHC/Cabal stack
--- Implementation 3: Hint/Cabal sanbox
--- Implementation 4: GHCJS
-
+inheritCompleteEnvironment :: Maybe [(String, String)]
 inheritCompleteEnvironment = Nothing
+
+emptyEnvironment :: Maybe [(String, String)]
 emptyEnvironment = Just []
+
+overwriteEnvironment :: String -> String -> IO (Maybe [(String, String)])
 overwriteEnvironment k v = do
   base <- fmap Map.fromList $ System.Environment.getEnvironment
   return $ Just $ Map.toList (Map.insert k v base)
-
-
--- TEST
-
--- alan1 :: AlanProc
--- alan1 = AlanProc $ \_ n (Just s) -> (Nothing, n+s, n+s)
-
-
--- UTILg
 
 -- | Hash any object with a JSON representation
 hashJson :: ToJSON a => a -> String
@@ -332,18 +324,3 @@ liftIOWithException :: IO a -> AlanServer a
 liftIOWithException k = liftIO (Control.Exception.try k) >>= \x -> case x of
   Left e  -> Control.Exception.throw (e :: Control.Exception.SomeException)
   Right x -> return x
-
-
-
-
---
--- POST /Stagees
---   [(package name,version)] -> Alan Stage
---       creates Stage
---       installs packages
--- POST /start
---   Stage -> [(source file tree,main file)] -> Alan Performer
---     compiles and launces a Performer
---     passed source MUST define a AlanProc Message as "main" (IO not accepted)
--- POST /send
---   Performer -> [Message] -> Alan [Message]
