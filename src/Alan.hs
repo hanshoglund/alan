@@ -101,6 +101,8 @@ import qualified System.Directory
 import qualified System.Process
 import qualified Data.Maybe
 
+import qualified System.FilePath.Posix as FilePath
+
 import System.Exit (ExitCode(..))
 
 
@@ -192,14 +194,6 @@ addStage dependencies = do
       ExitFailure e -> throwError $ "cabal" ++ " exited with code: " ++ show e
     return ()
 
-  -- forM_ dependencies $ \(name,version) -> do
-  --   let x = name ++ "-" ++ showVersion version
-  --   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["install", x
-  --     -- ,
-  --     -- "--sandbox", stageDir ++ "/sandbox"
-  --     ]
-  --   liftIOWithException $ System.Process.waitForProcess p
-  --   return ()
     (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" (["-j", "install"]
       ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version) dependencies)
     r <- liftIOWithException $ System.Process.waitForProcess p
@@ -229,7 +223,6 @@ start (Stage stageId) sources = do
   let packDbDir    = stageDir ++ "/sb/x86_64-osx-ghc-7.10.2-packages.conf.d"
   let performerDir = alanDir ++ "/performers/" ++ performerId
 
-  -- TODO verify paths
   -- TODO ghc path
   -- TODO assumes Main.hs exists
   there <- liftIOWithException $ System.Directory.doesDirectoryExist performerDir
@@ -237,9 +230,10 @@ start (Stage stageId) sources = do
     liftIOWithException $ System.Directory.createDirectoryIfMissing True performerDir
     return ()
 
-  -- TODO always write files for now
+  -- TODO if directory existed, files should exist too, but rewrite in case a file was accidentally removed
+  -- GHC won't recompile unless checksums are different
   forM_ sources $ \(path,code) -> do
-    -- TODO assure subdirs!
+    liftIOWithException $ System.Directory.createDirectoryIfMissing True (FilePath.takeDirectory (performerDir ++ "/" ++ path))
     liftIOWithException $ System.IO.writeFile (performerDir ++ "/" ++ path) code
     return ()
 

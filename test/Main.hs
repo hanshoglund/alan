@@ -34,9 +34,9 @@ main = do
     let deps = [("music-pitch-literal", makeVersion[1,9,0])]
     s <- addStage deps
     pf <- start s [
-      ("Alpha.hs",  "module Alpha where beta = 'b'"),
-      ("Beta.hs",   "module Beta where import Data.IORef; import Music.Pitch.Literal; beta = 'b'"),
-      ("Main.hs",   "module Main where import Music.Pitch.Literal; import Alpha; import Beta(beta); main = writeFile \"Output.txt\" (show (take 201 $ repeat $ (fs::Int)) ++ \"\\nDone!\\n\") ")]
+      ("Foo/Alpha.hs",  "module Foo.Alpha where beta = 'b'"),
+      ("Beta.hs",       "module Beta where import Data.IORef; import Music.Pitch.Literal; beta = 'b'"),
+      ("Main.hs",       "module Main where import Music.Pitch.Literal; import Foo.Alpha; import Beta(beta); main = writeFile \"Output.txt\" (show (take 2001 $ repeat $ (fs::Int)) ++ \"\\nDone!\\n\") ")]
     -- addStage False [("music-pitch-literal", makeVersion[1,9,0])]
     -- addStage False [
         -- ("music-pitch-literal", makeVersion[1,9,0])
