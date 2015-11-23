@@ -8,6 +8,7 @@ import Control.Monad (forever)
 import Control.Monad.Except (liftIO)
 import qualified Data.List
 import qualified Data.Char
+import qualified System.Exit
 
 
 readDep :: String -> (String, Version)
@@ -31,12 +32,15 @@ readDeps path = do
 main = do
   alanRes <- runAlanServer defAlanConfiguration $ do
     -- deps <- liftIO $ readDeps "/Users/Hoglund/suite/DEPS"
-    let deps = [("music-pitch-literal", makeVersion[1,9,0])]
+
+    -- let deps = [("music-pitch-literal", makeVersion[1,9,0])]
+    let deps = [("reverse-apply", makeVersion[2,0,1])]
+
     s <- addStage deps
     pf <- start s [
       ("Foo/Alpha.hs",  "module Foo.Alpha where beta = 'b'"),
-      ("Beta.hs",       "module Beta where import Data.IORef; import Music.Pitch.Literal; beta = 'b'"),
-      ("Main.hs",       "module Main where import Music.Pitch.Literal; import Foo.Alpha; import Beta(beta); main = writeFile \"Output.txt\" (show (take 2001 $ repeat $ (fs::Int)) ++ \"\\nDone!\\n\") ")]
+      ("Beta.hs",       "module Beta where import Data.IORef; beta = 'b'"),
+      ("Main.hs",       "module Main where import Foo.Alpha; import Beta(beta); main = writeFile \"Output.txt\" (show (take 2001 $ repeat $ (22::Int)) ++ \"\\nDone!\\n\") ")]
     -- addStage False [("music-pitch-literal", makeVersion[1,9,0])]
     -- addStage False [
         -- ("music-pitch-literal", makeVersion[1,9,0])
@@ -47,4 +51,4 @@ main = do
     return ()
   case alanRes of
     Right _ -> print "Ok"
-    Left e  -> print $ "Alan test error: " ++ e
+    Left e  -> System.Exit.die $ "Alan test error: " ++ e
