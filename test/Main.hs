@@ -29,14 +29,14 @@ readDeps path = do
   return $ map readDep (lines str)
 
 main = do
-  runAlan defAlanConfiguration $ do
+  alanRes <- runAlanServer defAlanConfiguration $ do
     -- deps <- liftIO $ readDeps "/Users/Hoglund/suite/DEPS"
     let deps = [("music-pitch-literal", makeVersion[1,9,0])]
-    s <- addStage False deps
+    s <- addStage deps
     pf <- start s [
       ("Alpha.hs",  "module Alpha where beta = 'b'"),
       ("Beta.hs",   "module Beta where import Data.IORef; import Music.Pitch.Literal; beta = 'b'"),
-      ("Main.hs",   "module Main where import Music.Pitch.Literal; import Beta(beta); main = writeFile \"Output.txt\" (show (take 201 $ repeat $ (gs::Int)) ++ \"\\nDone!\\n\") ")]
+      ("Main.hs",   "module Main where import Music.Pitch.Literal; import Beta(beta); main = writeFile \"Output.txt\" (show (take 201 $ repeat $ (fs::Int)) ++ \"\\nDone!\\n\") ")]
     -- addStage False [("music-pitch-literal", makeVersion[1,9,0])]
     -- addStage False [
         -- ("music-pitch-literal", makeVersion[1,9,0])
@@ -45,4 +45,6 @@ main = do
     liftIO $ print pf
     forever $ liftIO $ threadDelay 1000
     return ()
-  print "Ok"
+  case alanRes of
+    Right _ -> print "Ok"
+    Left e  -> print $ "Alan test error: " ++ e

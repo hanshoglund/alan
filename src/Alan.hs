@@ -88,6 +88,7 @@ import Control.Monad.Reader
 import Data.Supply
 import Data.Version
 import System.Process
+import qualified Control.Exception
 import qualified System.IO
 
 -- For hash
@@ -154,6 +155,7 @@ type Package    = (String, Version) -- I.e. [("aeson", fromString "0.10.0.0")]
 type SourceTree = [(FilePath, String)] -- I.e. [("Main.hs","module Main where alan = ...")]
 
 try :: AlanServer a -> AlanServer (Either AlanServerError a)
+try x = undefined
 
 -- For now, document that only one instance of alan should be run over an alan directory (they can run over different directories though)
 -- Eventually lock on PID or similar (i.e. alan server writes its PID to the alan dir before operating and refuses to proceed
@@ -162,40 +164,40 @@ try :: AlanServer a -> AlanServer (Either AlanServerError a)
 -- | Create a new stage.
 addStage :: [Package] -> AlanServer Stage
 addStage dependencies = do
-  let overwrite = True
+  let overwrite = False
 
   -- Generate stage ID (hash of deps)
   let stageId = hashJson $ (fmap (fmap show) dependencies)
-  homeDir <- liftIO $ System.Directory.getHomeDirectory
+  homeDir <- liftIOWithException $ System.Directory.getHomeDirectory
   alanDir <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory . alanStateConf) ask
   let stageDir = alanDir ++ "/" ++ stageId
 
-  there <- liftIO $ System.Directory.doesDirectoryExist stageDir
-  when (there && overwrite) $ liftIO $ System.Directory.removeDirectoryRecursive stageDir
+  there <- liftIOWithException $ System.Directory.doesDirectoryExist stageDir
+  when (there && overwrite) $ liftIOWithException $ System.Directory.removeDirectoryRecursive stageDir
 
   -- TODO Stack implementation
   -- Instead of the sandbox, create a dummy stack project (generate stack.yaml and a dummy library if needed)
   -- When compiling, concatenate GHC pack-db, lts pack-db (in .stack directory), and pack-db in stage.
 
   unless there $ do
-    liftIO $ System.Directory.createDirectoryIfMissing True stageDir
+    liftIOWithException $ System.Directory.createDirectoryIfMissing True stageDir
     -- TODO cabal path
-    (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["sandbox", "init",
+    (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["sandbox", "init",
       "--sandbox", stageDir ++ "/sb"]
-    liftIO $ System.Process.waitForProcess p
+    liftIOWithException $ System.Process.waitForProcess p
     return ()
 
   -- forM_ dependencies $ \(name,version) -> do
   --   let x = name ++ "-" ++ showVersion version
-  --   (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["install", x
+  --   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["install", x
   --     -- ,
   --     -- "--sandbox", stageDir ++ "/sandbox"
   --     ]
-  --   liftIO $ System.Process.waitForProcess p
+  --   liftIOWithException $ System.Process.waitForProcess p
   --   return ()
-    (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" (["-j", "install"]
+    (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" (["-j", "install"]
       ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version) dependencies)
-    liftIO $ System.Process.waitForProcess p
+    liftIOWithException $ System.Process.waitForProcess p
     return ()
 
   return $ Stage stageId
@@ -211,7 +213,7 @@ addStage dependencies = do
 start :: Stage -> SourceTree -> AlanServer Performer
 start (Stage stageId) sources = do
   let performerId = hashJson $ (sources,stageId)
-  homeDir <- liftIO $ System.Directory.getHomeDirectory
+  homeDir <- liftIOWithException $ System.Directory.getHomeDirectory
   alanDir <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory . alanStateConf) ask
   -- Generate performer id (stageId+unique Message)
   let stageDir     = alanDir ++ "/" ++ stageId
@@ -222,21 +224,21 @@ start (Stage stageId) sources = do
   -- TODO verify paths
   -- TODO ghc path
   -- TODO assumes Main.hs exists
-  there <- liftIO $ System.Directory.doesDirectoryExist performerDir
+  there <- liftIOWithException $ System.Directory.doesDirectoryExist performerDir
   unless there $ do
-    liftIO $ System.Directory.createDirectoryIfMissing True performerDir
+    liftIOWithException $ System.Directory.createDirectoryIfMissing True performerDir
     return ()
 
   -- TODO always write files for now
   forM_ sources $ \(path,code) -> do
     -- TODO assure subdirs!
-    liftIO $ System.IO.writeFile (performerDir ++ "/" ++ path) code
+    liftIOWithException $ System.IO.writeFile (performerDir ++ "/" ++ path) code
     return ()
 
   -- TODO always recompile for now
   -- TODO compile errors seem to be bounced back to Alan Process
   -- is this always the case? If so: catch
-  (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
     System.Process.proc "ghc" [
       "-package-db=" ++ packDbDir,
       "-threaded",
@@ -246,8 +248,8 @@ start (Stage stageId) sources = do
       "--make", "Main.hs",
       "-o", performerDir ++ "/AlanMain"
       ]
-  liftIO $ System.Process.waitForProcess p
-  (_,_,_,p) <- liftIO $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
+  liftIOWithException $ System.Process.waitForProcess p
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
     System.Process.proc (performerDir ++ "/AlanMain") []
 
   -- Go to perf dir, place sources here
@@ -265,7 +267,7 @@ send :: Performer -> Message -> AlanServer ()
   -- Write to input
   -- Block waiting for output
 
-[try,send] = undefined
+[send] = undefined
 
 -- TODO this has to be added to incoming SourceTrees
 alanMain :: AlanProc -> IO ()
@@ -311,6 +313,11 @@ hashJson = (=<<) (twoChars . ($ "") . Numeric.showHex) . LBS.unpack .  toHash
         toHash = MD5.hashlazy . Data.Aeson.encode
         twoChars [a   ] = ['0', a]
         twoChars [a, b] = [a,   b]
+
+liftIOWithException :: IO a -> AlanServer a
+liftIOWithException k = liftIO (Control.Exception.try k) >>= \x -> case x of
+  Left e  -> Control.Exception.throw (e :: Control.Exception.SomeException)
+  Right x -> return x
 
 
 
