@@ -8,11 +8,13 @@ Alan leverages Stack to support multiple language environments (called /stages/)
 which can be configured to run a specified /dialect/ of the Haskell language, by
 specifying GHC version, compiler options and packages.
 
-Users invoke Alan by submitting a group of Haskell modules, which are type-checked,
-compiled or interpreted and launched as an separate process called /performer/.
-Each performer runs into a sandboxed environment and can not access the code of
-another process. Otherwise they can perform arbitrary computation and respond
-to HTTP requests delegated from the Alan server.
+Users invoke Alan by submitting a group of Haskell modules, which are immediately
+type-checked and launched. The resultant process is called a /performer/.
+
+Each performer runs into a sandboxed environment and can not access memory, files,
+environment of other performers, or the underlying system. Otherwise they can
+perform arbitrary computation and respond to requests via the Alan system that
+launched them.
 
 The Safe Haskell mode is used to enforce this:
 <https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/safe-haskell.html>
@@ -52,6 +54,7 @@ Design notes:
     Wrap as a HTTP server (Alan/Server.hs) and client (Alan/Client.hs)
     Top-level execitable alan (Alan/Main.hs) invokes either
     Keep top-level API simple (< 5 functions)
+
     Compiled modules can NOT access the IO monad. This is enforced as follows:
       Safe Haskell is used to compile user code
       User code is not allowed to define @Main.main@ (in safe Haskell, the only way to run an IO computation is to be invoked by main)
@@ -59,6 +62,25 @@ Design notes:
 
     What type is Main.alanMain? It should be something simple that does not require user code to import Alan.
     Libraries can be written to facilitate use of this type later on (i.e. an Alan) monad.
+
+    The server runs in a single Alan directory, where all the stages (housing package-dbs) and performers (housing sources and artefacts) are stored.
+      The Alan directory should NOT be shared between server processes.
+      All persistant state is stored in the Alan directory. Note that the AlanServer monad is conceptually effect-free,
+      so anything created in the Alan directory should be for caching/optimization purposes and not affect behavior at all.
+    The AlanServer monad is sequential but not thread-safe.
+      COROLLARY
+        Any invocation of AlanServer methods from server wrappers must be queued.
+
+    The API is deliberately vague about HOW the submitted code is executed, as part of point of Alan is to hide system-specific details.
+
+    There are serveral implementation choices:
+      - Is the code compiled or interpreted?
+      - Are package databases used, or some other linking strategy (i.e. package mangling, interpreting everything).
+      - What compiler/interpreter is used (GHC-n, GHCJS, other?).
+      - How are package databases (if used) created (stack, cabal-install, ghc-pkg, manually)
+      - How are the processes launched?
+      - How does communication between the processes and Alan (hence the world) happen. File handles, sockets, runtime linking,
+        shared memory etc.
 -}
 
 import Control.Monad.Except
@@ -139,8 +161,11 @@ try :: AlanServer a -> AlanServer (Either AlanServerError a)
 -- Eventually lock on PID or similar (i.e. alan server writes its PID to the alan dir before operating and refuses to proceed
 -- if a process with that PID exists on the system)
 
-addStage :: Bool -> [Package] -> AlanServer Stage
-addStage overwrite dependencies = do
+-- | Create a new stage.
+addStage :: [Package] -> AlanServer Stage
+addStage dependencies = do
+  let overwrite = True
+
   -- Generate stage ID (hash of deps)
   let stageId = hashJson $ (fmap (fmap show) dependencies)
   homeDir <- liftIO $ System.Directory.getHomeDirectory
@@ -184,6 +209,7 @@ addStage overwrite dependencies = do
       -- Run cabal sandbox install [packages]
     -- Return Stage (with id)
 
+-- | Start a new performer using the given stage.
 start :: Stage -> SourceTree -> AlanServer Performer
 start (Stage stageId) sources = do
   let performerId = hashJson $ (sources,stageId)
@@ -236,7 +262,8 @@ start (Stage stageId) sources = do
   return $ Performer performerId
 
 
-send :: Performer -> Message -> AlanServer Message
+-- | Send a message to the given perfomer.
+send :: Performer -> Message -> AlanServer ()
   -- Write to input
   -- Block waiting for output
 
