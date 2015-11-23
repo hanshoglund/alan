@@ -224,22 +224,18 @@ start (Stage stageId) sources = do
   let performerDir = alanDir ++ "/performers/" ++ performerId
 
   -- TODO ghc path
-  -- TODO assumes Main.hs exists
   there <- liftIOWithException $ System.Directory.doesDirectoryExist performerDir
   unless there $ do
     liftIOWithException $ System.Directory.createDirectoryIfMissing True performerDir
     return ()
 
-  -- TODO if directory existed, files should exist too, but rewrite in case a file was accidentally removed
-  -- GHC won't recompile unless checksums are different
+  -- Note: If the performer directory existed, files should exist too, but rewrite in case a file was accidentally removed
+  -- Note that GHC won't recompile unless checksums are different
   forM_ sources $ \(path,code) -> do
     liftIOWithException $ System.Directory.createDirectoryIfMissing True (FilePath.takeDirectory (performerDir ++ "/" ++ path))
     liftIOWithException $ System.IO.writeFile (performerDir ++ "/" ++ path) code
     return ()
 
-  -- TODO always recompile for now
-  -- TODO compile errors seem to be bounced back to Alan Process
-  -- is this always the case? If so: catch
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
     System.Process.proc "ghc" [
       "-package-db=" ++ packDbDir,
@@ -274,7 +270,7 @@ send :: Performer -> Message -> AlanServer ()
 
 [send] = undefined
 
--- TODO this has to be added to incoming SourceTrees
+-- TODO remove Main from incoming code and add something like this
 alanMain :: AlanProc -> IO ()
 alanMain (AlanProc startup) = do
   -- Messages are lines to stdin/stdout (TODO escape newlines, or even use fancy binary modes)
