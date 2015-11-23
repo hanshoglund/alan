@@ -238,7 +238,7 @@ start (Stage stageId) sources = do
       "-threaded",
       "-O2",
       "-XSafe",
-      "-i"++performerDir, -- or .
+      "-i" ++ performerDir, -- or .
       "--make", "Main.hs",
       "-o", performerDir ++ "/AlanMain"
       ]
