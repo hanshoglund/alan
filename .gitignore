@@ -3,3 +3,4 @@ cabal.sabdbox*
 dist
 cabal.sandbox/*
 cabal.sandbox*
+.stack-work
