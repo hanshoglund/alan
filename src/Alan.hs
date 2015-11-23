@@ -8,7 +8,7 @@ Alan leverages Stack to support multiple language environments (called /stages/)
 which can be configured to run a specified /dialect/ of the Haskell language, by
 specifying GHC version, compiler options and packages.
 
-Users invoke Alan by submitting a group of Haskell modules, which are immediately
+Users invoke Alan by submitting a set of Haskell modules, which are immediately
 type-checked and launched. The resultant process is called a /performer/.
 
 Each performer runs into a sandboxed environment and can not access memory, files,
