@@ -101,6 +101,8 @@ import qualified System.Directory
 import qualified System.Process
 import qualified Data.Maybe
 
+import System.Exit (ExitCode(..))
+
 
 -- API
 
@@ -184,7 +186,10 @@ addStage dependencies = do
     -- TODO cabal path
     (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" ["sandbox", "init",
       "--sandbox", stageDir ++ "/sb"]
-    liftIOWithException $ System.Process.waitForProcess p
+    r <- liftIOWithException $ System.Process.waitForProcess p
+    case r of
+      ExitSuccess -> return ()
+      ExitFailure e -> throwError $ "cabal" ++ " exited with code: " ++ show e
     return ()
 
   -- forM_ dependencies $ \(name,version) -> do
@@ -197,7 +202,10 @@ addStage dependencies = do
   --   return ()
     (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir }) $ System.Process.proc "cabal" (["-j", "install"]
       ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version) dependencies)
-    liftIOWithException $ System.Process.waitForProcess p
+    r <- liftIOWithException $ System.Process.waitForProcess p
+    case r of
+      ExitSuccess -> return ()
+      ExitFailure e -> throwError $ "cabal" ++ " exited with code: " ++ show e
     return ()
 
   return $ Stage stageId
@@ -248,7 +256,10 @@ start (Stage stageId) sources = do
       "--make", "Main.hs",
       "-o", performerDir ++ "/AlanMain"
       ]
-  liftIOWithException $ System.Process.waitForProcess p
+  r <- liftIOWithException $ System.Process.waitForProcess p
+  case r of
+    ExitSuccess -> return ()
+    ExitFailure e -> throwError $ "ghc" ++ " exited with code: " ++ show e
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir }) $
     System.Process.proc (performerDir ++ "/AlanMain") []
 
@@ -304,7 +315,7 @@ alanMain (AlanProc startup) = do
 -- alan1 = AlanProc $ \_ n (Just s) -> (Nothing, n+s, n+s)
 
 
--- UTIL
+-- UTILg
 
 -- | Hash any object with a JSON representation
 hashJson :: ToJSON a => a -> String
