@@ -155,8 +155,6 @@ type SourceTree = [(FilePath, String)] -- I.e. [("Main.hs","module Main where al
 
 try :: AlanServer a -> AlanServer (Either AlanServerError a)
 
--- TODO addStage could create races if multiple alans are run on the same dir (A is building a stage, B obverve it as already existing)
--- TODO start has similar problem
 -- For now, document that only one instance of alan should be run over an alan directory (they can run over different directories though)
 -- Eventually lock on PID or similar (i.e. alan server writes its PID to the alan dir before operating and refuses to proceed
 -- if a process with that PID exists on the system)
