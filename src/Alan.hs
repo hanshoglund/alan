@@ -241,7 +241,8 @@ start (Stage stageId) sources = do
     liftIOWithException $ System.IO.writeFile (performerDir ++ "/" ++ path) code
     return ()
 
-  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = inheritCompleteEnvironment }) $
+  environ <- liftIOWithException $ inheritSpecifically ["HOME"]
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = environ }) $
     System.Process.proc ghcExe [
       "-package-db=" ++ packDbDir,
       "-threaded",
@@ -306,6 +307,13 @@ inheritCompleteEnvironment = Nothing
 
 emptyEnvironment :: Maybe [(String, String)]
 emptyEnvironment = Just []
+
+inheritSpecifically :: [String] -> IO (Maybe [(String, String)])
+inheritSpecifically ks = do
+  base <- fmap Map.fromList $ System.Environment.getEnvironment
+  return $ Just $ Map.toList (appAll (fmap (\k -> case (Map.lookup k base) of { Just v -> Map.insert k v ; Nothing -> id }) ks) Map.empty)
+    where
+      appAll = Prelude.foldr (.) id
 
 overwriteEnvironment :: String -> String -> IO (Maybe [(String, String)])
 overwriteEnvironment k v = do
