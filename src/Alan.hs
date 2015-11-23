@@ -158,8 +158,8 @@ data Performer = Performer String -- Must be JSONable
 type Package    = (String, Version) -- I.e. [("aeson", fromString "0.10.0.0")]
 type SourceTree = [(FilePath, String)] -- I.e. [("Main.hs","module Main where alan = ...")]
 
-try :: AlanServer a -> AlanServer (Either AlanServerError a)
-try x = undefined
+-- try :: AlanServer a -> AlanServer (Either AlanServerError a)
+-- try x = catchError x ()
 
 -- For now, document that only one instance of alan should be run over an alan directory (they can run over different directories though)
 -- Eventually lock on PID or similar (i.e. alan server writes its PID to the alan dir before operating and refuses to proceed
