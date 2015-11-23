@@ -217,8 +217,8 @@ addStage dependencies = do
 start :: Stage -> SourceTree -> AlanServer Performer
 start (Stage stageId) sources = do
   let performerId = hashJson $ (sources,stageId)
-  homeDir <- liftIOWithException $ System.Directory.getHomeDirectory
-  alanDir <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory . alanStateConf) ask
+  homeDir  <- liftIOWithException $ System.Directory.getHomeDirectory
+  alanDir  <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory . alanStateConf) ask
   cabalExe <- fmap (alanConfCabalExecutable . alanStateConf) ask
   ghcExe   <- fmap (alanConfGhcExecutable . alanStateConf) ask
 
