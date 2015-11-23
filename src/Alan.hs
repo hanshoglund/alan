@@ -322,5 +322,5 @@ hashJson = (=<<) (twoChars . ($ "") . Numeric.showHex) . LBS.unpack .  toHash
 
 liftIOWithException :: IO a -> AlanServer a
 liftIOWithException k = liftIO (Control.Exception.try k) >>= \x -> case x of
-  Left e  -> Control.Exception.throw (e :: Control.Exception.SomeException)
+  Left e  -> throwError $ show (e :: Control.Exception.SomeException)
   Right x -> return x
