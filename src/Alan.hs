@@ -432,15 +432,15 @@ launchProcessStack stageDir performerDir = do
   ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
 
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
-    System.Process.proc ghcExe [
-      Data.List.intercalate " " $ fmap (\p -> "-package-db="++p) dbPaths,
+    System.Process.proc ghcExe (fmap ("-package-db="++) dbPaths ++ [
       "-threaded",
       "-O2",
       "-XSafe",
+      "-v", -- TODO
       "-i" ++ performerDir, -- or .
       "--make", "Main.hs",
       "-o", performerDir ++ "/AlanMain"
-      ]
+      ])
   r <- liftIOWithException $ System.Process.waitForProcess p
   case r of
     ExitSuccess -> return ()
