@@ -38,7 +38,7 @@ main = do
 
     -- let deps = [("music-pitch-literal", makeVersion[1,9,0])]
     let deps = Dependencies "XXX" [
-            ("reverse-apply", makeVersion[2,0,1]), ("base", makeVersion[4,8,1,0])
+            ("base", makeVersion[4,8,1,0])
             ]
 
     s <- addStage deps
