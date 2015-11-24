@@ -30,6 +30,9 @@ readDeps path = do
   return $ map readDep (lines str)
 
 main = do
+  print $ runParser par "GHC_PACKAGE_PATH=xyz"
+  putStrLn ""
+
   alanRes <- runAlanServer defAlanConfiguration $ do
     -- deps <- liftIO $ readDeps "/Users/Hoglund/suite/DEPS"
 

@@ -48,7 +48,13 @@ module Alan (
   Performer,
   addStage,
   start,
-  send
+  send,
+
+  -- DEBUG
+  runParser,
+  par,
+  pathParser,
+  packDbParser,
   ) where
 
 {-
@@ -115,7 +121,8 @@ import qualified Data.List
 
 import qualified Text.Parser.Combinators as P
 import qualified Text.Parser.Char as CP
-import qualified Text.ParserCombinators.ReadP as RP
+-- import qualified Text.ParserCombinators.ReadP as RP
+import qualified Text.Parsec as Parsec
 
 
 import qualified System.Environment
@@ -363,8 +370,8 @@ addStageStack stageDir dependencies = do
   writeFilesInDirectory stageDir [("ENV-DEBUG", out)]
   (compiler, packDbs) <- getCompilerAndPackagePathFromEnv out
   writeFilesInDirectory stageDir [
-        (stageDir ++ "/COMPILER", compiler),
-        (stageDir ++ "/PACKAGE_DBS", unlines packDbs)
+        ("COMPILER", compiler),
+        ("PACKAGE_DBS", unlines packDbs)
         ]
   return ()
 
@@ -382,9 +389,9 @@ newtype Res = Res (First String, First [String]) -- compiler, packDbs
 
 par :: Parser Res
 par = fmap mconcat $ P.sepEndBy1 (asum [
-  fmap (findCompilerPath) pathParser,
-  fmap (\dbs -> Res (mempty,First (Just dbs))) packDbParser,
-  eatLine
+  P.try $ fmap (findCompilerPath) pathParser,
+  P.try $ fmap (\dbs -> Res (mempty,First (Just dbs))) packDbParser,
+  P.try $ eatLine
   ]) (CP.string "\n")
   where
     eatLine = P.many (CP.noneOf "\n") >> return mempty
@@ -397,27 +404,31 @@ findCompilerPath xs = case Data.List.find (".stack/programs" `Data.List.isInfixO
 pathParser :: Parser [String]
 pathParser = do
   CP.string "PATH="
-  r <- P.sepBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
+  r <- P.sepEndBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
   return r
 
 -- GHC_PACKAGE_PATH, separated by :
 packDbParser :: Parser [String]
 packDbParser = do
   CP.string "GHC_PACKAGE_PATH="
-  r <- P.sepBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
+  r <- P.sepEndBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
   return r
 
 -- MonadPlus, Parsing, CharParsing
-type Parser = RP.ReadP
+-- type Parser = RP.ReadP
 runParser :: Parser a -> String -> Either String a
-runParser x input = case RP.readP_to_S x input of
-  []          -> Left "ReadP failed"
-  ((x,_) : _) -> Right x
+-- runParser x input = case RP.readP_to_S x input of
+--   []          -> Left "ReadP failed"
+--   ((x,_) : _) -> Right x
+type Parser = Parsec.Parsec String ()
+runParser x input = case Parsec.runParser x () "Noname" input of
+  Left e -> Left (show e)
+  Right x -> Right x
 
 launchProcessStack :: FilePath -> FilePath -> AlanServer ()
 launchProcessStack stageDir performerDir = do
   dbPaths <- fmap lines $ liftIOWithException $ Prelude.readFile (stageDir ++ "/PACKAGE_DBS")
-  ghcExe <- liftIOWithException $ Prelude.readFile (stageDir ++ "/COMPILER")
+  ghcExe <- fmap (++ "/ghc") $ liftIOWithException $ Prelude.readFile (stageDir ++ "/COMPILER")
   ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
 
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
