@@ -106,6 +106,7 @@ import qualified System.Directory
 import qualified System.Process
 import qualified Data.Maybe
 import qualified Data.Map as Map
+import qualified Data.List
 
 import qualified System.Environment
 import qualified System.FilePath.Posix as FilePath
@@ -122,14 +123,14 @@ data AlanConfiguration  = AlanConfiguration {
   -- Might be changed
   alanConfGhcExecutable   :: FilePath,      -- defaults to the value of (which ghc)
   alanConfCabalExecutable :: FilePath,      -- defaults to the value of (which cabal)
-  alanStackExecutable     :: FilePath,      -- defaults to the value of (which stack)
+  alanConfStackExecutable :: FilePath,      -- defaults to the value of (which stack)
   alanConfAlanDirectory   :: Maybe FilePath -- defaults to ~/.alan
   }
 -- TODO in monad to suppot the actual paths above
 defAlanConfiguration      = AlanConfiguration {
   alanConfGhcExecutable   = "/usr/bin/ghc",
   alanConfCabalExecutable = "/usr/bin/cabal",
-  alanStackExecutable     = "stack",
+  alanConfStackExecutable = "stack",
   alanConfAlanDirectory   = Nothing
   }
 
@@ -205,7 +206,7 @@ start (Stage stageId) sources = do
 
   -- Note: If the performer directory existed, files should exist too, but rewrite in case a file was accidentally removed
   -- Note that GHC won't recompile unless checksums are different
-  writeSourceFiles performerDir sources
+  writeFilesInDirectory performerDir sources
   launchProcessCabal stageDir performerDir
   return $ Performer performerId
 
@@ -220,11 +221,12 @@ send :: Performer -> Message -> AlanServer ()
 
 -- IMPLEMENTATION
 
-writeSourceFiles :: FilePath -> SourceTree -> AlanServer ()
-writeSourceFiles performerDir sources = do
+-- | Write all files in the given directory. Can handle subpaths but not patterns like .., . or ~.
+writeFilesInDirectory :: FilePath -> SourceTree -> AlanServer ()
+writeFilesInDirectory dir sources = do
   forM_ sources $ \(path,code) -> do
-    liftIOWithException $ System.Directory.createDirectoryIfMissing True (FilePath.takeDirectory (performerDir ++ "/" ++ path))
-    liftIOWithException $ System.IO.writeFile (performerDir ++ "/" ++ path) code
+    liftIOWithException $ System.Directory.createDirectoryIfMissing True (FilePath.takeDirectory (dir ++ "/" ++ path))
+    liftIOWithException $ System.IO.writeFile (dir ++ "/" ++ path) code
     return ()
 
 
@@ -262,7 +264,7 @@ launchProcessCabal stageDir performerDir = do
   -- TODO replace arch/OS/GHC version here by parsing cabal.sandbox.config and looking at package-db: field
   let packDbDir    = stageDir ++ "/sb/x86_64-osx-ghc-7.10.2-packages.conf.d"
 
-  ghcExe   <- fmap (alanConfGhcExecutable . alanStateConf) ask
+  ghcExe <- fmap (alanConfGhcExecutable . alanStateConf) ask
   ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
 
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
@@ -285,13 +287,60 @@ launchProcessCabal stageDir performerDir = do
   -- TODO handle termination
   return ()
 
-addStageStack :: AlanServer ()
-addStageStack = do
+-- TODO change format to support arbitrary resolvers
+-- Currently Cabal/GHC assumes global conf, and Stack assumes lts-3.15
+addStageStack :: FilePath -> [Package] -> AlanServer ()
+addStageStack stageDir dependencies = do
+
+  -- TODO all packages from resolver inst of just base
+  let resolver         = "lts-3.15"
+  let cabalPackageSpec = Data.List.intercalate "\n" $ ["base"]
+  let stackPackageSpec = Data.List.intercalate "\n" $ [""]
+
   -- Create dummy Setup.hs, a.cabal, Main.hs and stack.yaml
+  let files = [
+        ("Setup.hs", "import Distribution.Simple\n"
+                  ++ "main = defaultMain\n"),
+        ("Main.hs",  "main = return ()\n"),
+        ("a.cabal", "cabal-version: >= 1.2\n"
+                  ++ "name:         a\n"
+                  ++ "version:      0.0.0.1\n"
+                  ++ "build-type:   simple\n"
+                  ++ "\n"
+                  ++ "executable AlanDummy\n"
+                  ++ "main-is: Main.hs\n"
+                  ++ "hs-source-dirs: .\n"
+                  ++ "build-depends:\n"
+                  ++ "\n"
+                  ++ cabalPackageSpec),
+        ("stack.yaml",
+                     "resolver: " ++ resolver ++ "\n"
+                  ++ "extra-deps:\n"
+                  ++ stackPackageSpec)
+                ]
+  writeFilesInDirectory stageDir files
+
+  stackExe <- fmap (alanConfStackExecutable . alanStateConf) ask
+  stackEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
+
+  -- Run stack build --install-ghc
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = stackEnv }) $
+    System.Process.proc stackExe ["build", "--install-ghc"]
+  r <- liftIOWithException $ System.Process.waitForProcess p
+  case r of
+    ExitSuccess -> return ()
+    ExitFailure e -> throwError $ stackExe ++ " exited with code: " ++ show e
+
+
+  -- Run stack exec env
+  -- Parse env
+  -- Create files "$performerDir/COMPILER"
+  -- Create files "$performerDir/PACKAGE_DBS"
+
   return ()
 
-launchProcessStack :: AlanServer ()
-launchProcessStack = do
+launchProcessStack :: FilePath -> FilePath -> AlanServer ()
+launchProcessStack stageDir performerDir = do
   -- Invoke GHC
   return ()
 
@@ -387,6 +436,7 @@ inheritCompleteEnvironment = Nothing
 emptyEnvironment :: Maybe [(String, String)]
 emptyEnvironment = Just []
 
+-- | Create an environment inheriting exactly the given properties from the system environment (the environment used to invoke alan).
 inheritSpecifically :: [String] -> IO (Maybe [(String, String)])
 inheritSpecifically ks = do
   base <- fmap Map.fromList $ System.Environment.getEnvironment
