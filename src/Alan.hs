@@ -90,13 +90,16 @@ Design notes:
         shared memory etc.
 -}
 
+import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.Reader
+import Data.Foldable (asum)
 import Data.Supply
 import Data.Version
 import System.Process
 import qualified Control.Exception
 import qualified System.IO
+import Data.Monoid
 
 -- For hash
 import qualified Data.Aeson
@@ -109,6 +112,11 @@ import qualified System.Process
 import qualified Data.Maybe
 import qualified Data.Map as Map
 import qualified Data.List
+
+import qualified Text.Parser.Combinators as P
+import qualified Text.Parser.Char as CP
+import qualified Text.ParserCombinators.ReadP as RP
+
 
 import qualified System.Environment
 import qualified System.FilePath.Posix as FilePath
@@ -349,15 +357,57 @@ addStageStack stageDir dependencies = do
     ExitSuccess -> return ()
     ExitFailure e -> throwError $ stackExe ++ " exited with code " ++ show e ++ " and message " ++ err
 
-  let (compiler, packDbs) = getCompilerAndPackagePathFromEnv out
+  (compiler, packDbs) <- getCompilerAndPackagePathFromEnv out
   writeFilesInDirectory stageDir [
         (stageDir ++ "/COMPILER", compiler),
         (stageDir ++ "/PACKAGE_DBS", unlines packDbs)
         ]
   return ()
 
-getCompilerAndPackagePathFromEnv :: String -> (String, [String])
-getCompilerAndPackagePathFromEnv = undefined
+getCompilerAndPackagePathFromEnv :: String -> AlanServer (String, [String])
+getCompilerAndPackagePathFromEnv str = case runParser par str of
+  Just (Res (First (Just compiler), First (Just packDbs))) -> return (compiler, packDbs)
+  _ -> throwError $ "Could not parse env"
+  where
+    ls :: [String]
+    ls = lines str
+
+newtype Res = Res (First String, First [String]) -- compiler, packDbs
+  deriving (Show, Monoid)
+
+par :: Parser Res
+par = fmap mconcat $ P.sepEndBy1 (asum [
+  fmap (findCompilerPath) pathParser,
+  fmap (\dbs -> Res (mempty,First (Just dbs))) packDbParser,
+  eatLine
+  ]) (CP.string "\n")
+  where
+    eatLine = P.many (CP.noneOf "\n") >> return mempty
+
+findCompilerPath xs = case Data.List.find (".stack/programs" `Data.List.isInfixOf`) xs of
+  Nothing -> mempty
+  Just x  -> Res (First (Just x),mempty)
+
+-- PATH line, separated by :, the one containing .stack/programs/
+pathParser :: Parser [String]
+pathParser = do
+  CP.string "PATH"
+  r <- P.sepBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
+  return r
+
+-- GHC_PACKAGE_PATH, separated by :
+packDbParser :: Parser [String]
+packDbParser = do
+  CP.string "GHC_PACKAGE_PATH"
+  r <- P.sepBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
+  return r
+
+-- MonadPlus, Parsing, CharParsing
+type Parser = RP.ReadP
+runParser :: Parser a -> String -> Maybe a
+runParser x input = case RP.readP_to_S x input of
+  []          -> Nothing
+  ((x,_) : _) -> Just x
 
 launchProcessStack :: FilePath -> FilePath -> AlanServer ()
 launchProcessStack stageDir performerDir = do
