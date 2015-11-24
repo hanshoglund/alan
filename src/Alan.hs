@@ -165,44 +165,48 @@ addStage :: [Package] -> AlanServer Stage
 addStage dependencies = do
   let overwrite = False
 
-  -- Generate stage ID (hash of deps)
+  -- Generate ID
   let stageId = hashJson $ (fmap (fmap show) dependencies)
+
+  -- Compute relevant paths
   homeDir  <- liftIOWithException $ System.Directory.getHomeDirectory
   alanDir  <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory . alanStateConf) ask
   cabalExe <- fmap (alanConfCabalExecutable . alanStateConf) ask
   ghcExe   <- fmap (alanConfGhcExecutable . alanStateConf) ask
   let stageDir = alanDir ++ "/" ++ stageId
 
+  -- Assure stage directory
   there <- liftIOWithException $ System.Directory.doesDirectoryExist stageDir
   when (there && overwrite) $ liftIOWithException $ System.Directory.removeDirectoryRecursive stageDir
 
-  addStageCabal there stageDir cabalExe dependencies
+  -- Create the stage
+  unless there $ addStageCabal stageDir dependencies
   return $ Stage stageId
-  -- TODO Stack implementation
 
 
 -- | Start a new performer using the given stage.
 start :: Stage -> SourceTree -> AlanServer Performer
 start (Stage stageId) sources = do
+
+  -- Generate ID
   let performerId = hashJson $ (sources,stageId)
+
+  -- Compute relevant paths
   homeDir  <- liftIOWithException $ System.Directory.getHomeDirectory
   alanDir  <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory . alanStateConf) ask
-  cabalExe <- fmap (alanConfCabalExecutable . alanStateConf) ask
-  ghcExe   <- fmap (alanConfGhcExecutable . alanStateConf) ask
 
   -- Generate performer id (stageId+unique Message)
   let stageDir     = alanDir ++ "/" ++ stageId
   let performerDir = alanDir ++ "/performers/" ++ performerId
 
+  -- Assure performer directory
   there <- liftIOWithException $ System.Directory.doesDirectoryExist performerDir
-  unless there $ do
-    liftIOWithException $ System.Directory.createDirectoryIfMissing True performerDir
-    return ()
+  unless there $ liftIOWithException $ System.Directory.createDirectoryIfMissing True performerDir
 
   -- Note: If the performer directory existed, files should exist too, but rewrite in case a file was accidentally removed
   -- Note that GHC won't recompile unless checksums are different
   writeSourceFiles performerDir sources
-  launchProcessCabal performerDir ghcExe
+  launchProcessCabal stageDir performerDir
   return $ Performer performerId
 
 
@@ -224,36 +228,41 @@ writeSourceFiles performerDir sources = do
     return ()
 
 
--- TODO does not work if (null dependencies == True)
-addStageCabal :: Bool -> FilePath -> FilePath -> [Package] -> AlanServer ()
-addStageCabal there stageDir cabalExe dependencies = do
+-- | Prepare the given stage directory with the given dependencies.
+addStageCabal :: FilePath -> [Package] -> AlanServer ()
+addStageCabal stageDir dependencies = do
+  -- TODO does not work if (null dependencies == True)
+  cabalExe <- fmap (alanConfCabalExecutable . alanStateConf) ask
   cabalEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
 
-  unless there $ do
-    liftIOWithException $ System.Directory.createDirectoryIfMissing True stageDir
-    (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
-      $ System.Process.proc cabalExe ["sandbox", "init", "--sandbox", stageDir ++ "/sb"]
-    r <- liftIOWithException $ System.Process.waitForProcess p
-    case r of
-      ExitSuccess -> return ()
-      ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
-    return ()
+  liftIOWithException $ System.Directory.createDirectoryIfMissing True stageDir
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
+    $ System.Process.proc cabalExe ["sandbox", "init", "--sandbox", stageDir ++ "/sb"]
+  r <- liftIOWithException $ System.Process.waitForProcess p
+  case r of
+    ExitSuccess -> return ()
+    ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
+  return ()
 
-    (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
-      $ System.Process.proc cabalExe (["-j", "install"]
-        ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version)
-        dependencies)
-    r <- liftIOWithException $ System.Process.waitForProcess p
-    case r of
-      ExitSuccess -> return ()
-      ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
-    return ()
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
+    $ System.Process.proc cabalExe (["-j", "install"]
+      ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version)
+      dependencies)
+  r <- liftIOWithException $ System.Process.waitForProcess p
+  case r of
+    ExitSuccess -> return ()
+    ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
+  return ()
 
+-- | Start a performer, assuming
+--    * That the given stage directory has been prepared by a call to addStageXX
+--    * That the given performer directory contains all *sources*, including Main.hs, defining Main.main.
 launchProcessCabal :: FilePath -> FilePath -> AlanServer ()
-launchProcessCabal performerDir ghcExe = do
+launchProcessCabal stageDir performerDir = do
   -- TODO replace arch/OS/GHC version here by parsing cabal.sandbox.config and looking at package-db: field
   let packDbDir    = stageDir ++ "/sb/x86_64-osx-ghc-7.10.2-packages.conf.d"
 
+  ghcExe   <- fmap (alanConfGhcExecutable . alanStateConf) ask
   ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
 
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
@@ -276,6 +285,15 @@ launchProcessCabal performerDir ghcExe = do
   -- TODO handle termination
   return ()
 
+addStageStack :: AlanServer ()
+addStageStack = do
+  -- Create dummy Setup.hs, a.cabal, Main.hs and stack.yaml
+  return ()
+
+launchProcessStack :: AlanServer ()
+launchProcessStack = do
+  -- Invoke GHC
+  return ()
 
     {-
       Stack implementation:
