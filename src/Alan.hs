@@ -341,10 +341,9 @@ addStageStack stageDir dependencies = do
 
 launchProcessStack :: FilePath -> FilePath -> AlanServer ()
 launchProcessStack stageDir performerDir = do
+  dbPaths <- fmap lines $ liftIOWithException $ Prelude.readFile (stageDir ++ "/PACKAGE_DBS")
   ghcExe <- liftIOWithException $ Prelude.readFile (stageDir ++ "/COMPILER")
   ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
-
-  dbPaths <- fmap lines $ liftIOWithException $ Prelude.readFile (stageDir ++ "/COMPILER")
 
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
     System.Process.proc ghcExe [
