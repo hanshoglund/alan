@@ -116,10 +116,12 @@ type AlanServerError = String
 data AlanConfiguration  = AlanConfiguration {
   -- At the moment, each Alan server requires a preinstalled GHC and Cabal
   -- Might be changed
-  alanConfGhcExecutable :: FilePath,
-  alanConfCabalExecutable         :: FilePath,
-  alanConfAlanDirectory :: Maybe FilePath
+  alanConfGhcExecutable   :: FilePath,      -- defaults to the value of (which ghc)
+  alanConfCabalExecutable :: FilePath,      -- defaults to the value of (which cabal)
+  alanStackExecutable     :: FilePath,      -- defaults to the value of (which stack)
+  alanConfAlanDirectory   :: Maybe FilePath -- defaults to ~/.alan
   }
+-- TODO in monad to suppot the actual paths above
 defAlanConfiguration = AlanConfiguration {
   alanConfGhcExecutable = "/usr/bin/ghc",
   alanConfCabalExecutable         = "/usr/bin/cabal",
@@ -127,7 +129,7 @@ defAlanConfiguration = AlanConfiguration {
   }
 
 
-type Message = String -- TODO JSON
+type Message    = String -- TODO JSON
 type Persistent = String -- TODO JSON
 
 newtype AlanState = AlanState { alanStateConf :: AlanConfiguration }
@@ -178,6 +180,60 @@ addStage dependencies = do
   when (there && overwrite) $ liftIOWithException $ System.Directory.removeDirectoryRecursive stageDir
 
   -- TODO Stack implementation
+  {-
+    Stack implementation:
+      Add stage:
+
+        Create dummy Setup.hs, a.cabal, Main.hs and stack.yaml
+
+        Setup.hs
+import Distribution.Simple
+main = defaultMain
+
+          a.cabal
+cabal-version: >= 1.2
+name: a
+version: 0.0.0.1
+build-type: Simple
+
+executable AlanDummy
+  main-is: Main.hs
+  hs-source-dirs: .
+  build-depends:
+    -- Exact package versions, i.e.
+    base,
+    Boolean ==0.2.3,
+    reverse-apply ==2.0.1
+
+          Main.hs
+main = return ()
+
+        stack.yaml
+resolver: lts-2.14 # resolver, if any
+extra-deps:
+  - reverse-apply-2.0.1 # all packages not in resolver
+
+        Then do
+          stack build --install-ghc
+
+      Start:
+       ~/.stack/programs/x86_64-linux/ghc-7.8.4/bin/ghc \
+        -package-db=/home/hans/.stack/snapshots/x86_64-linux/lts-2.14/7.8.4/pkgdb \
+        -package-db=/home/hans/.alan/STAGE_ID/.stack-work/install/x86_64-linux/lts-2.14/7.8.4/pkgdb \
+        --make -o AlanMain2 Main.hs
+
+        (We can get both GHC path and package DBs from running stack exec env in stage dir)
+        hans@bigtom:~/.alan/STAGE_ID$ stack exec env
+        PATH=/home/hans/.stack/programs/x86_64-linux/ghc-7.8.4/bin
+        GHC_PACKAGE_PATH=
+          /home/hans/.alan/STAGE_ID/.stack-work/install/x86_64-linux/lts-2.14/7.8.4/pkgdb
+          :
+          /home/hans/.stack/snapshots/x86_64-linux/lts-2.14/7.8.4/pkgdb
+          :
+          /home/hans/.stack/programs/x86_64-linux/ghc-7.8.4/lib/ghc-7.8.4/package.conf.d
+
+  -}
+
   -- Instead of the sandbox, create a dummy stack project (generate stack.yaml and a dummy library if needed)
   -- When compiling, concatenate GHC pack-db, lts pack-db (in .stack directory), and pack-db in stage.
 
