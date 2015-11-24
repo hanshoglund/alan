@@ -179,63 +179,6 @@ addStage dependencies = do
   addStageCabal there stageDir cabalExe dependencies
   return $ Stage stageId
   -- TODO Stack implementation
-  {-
-    Stack implementation:
-      Add stage:
-
-        Create dummy Setup.hs, a.cabal, Main.hs and stack.yaml
-
-        Setup.hs
-import Distribution.Simple
-main = defaultMain
-
-          a.cabal
-cabal-version: >= 1.2
-name: a
-version: 0.0.0.1
-build-type: Simple
-
-executable AlanDummy
-  main-is: Main.hs
-  hs-source-dirs: .
-  build-depends:
-    -- Exact package versions, i.e.
-    base,
-    Boolean ==0.2.3,
-    reverse-apply ==2.0.1
-
-          Main.hs
-main = return ()
-
-        stack.yaml
-resolver: lts-2.14 # resolver, if any
-extra-deps:
-  - reverse-apply-2.0.1 # all packages not in resolver
-
-        Then do
-          stack build --install-ghc
-
-      Start:
-       ~/.stack/programs/x86_64-linux/ghc-7.8.4/bin/ghc \
-        -package-db=/home/hans/.stack/snapshots/x86_64-linux/lts-2.14/7.8.4/pkgdb \
-        -package-db=/home/hans/.alan/STAGE_ID/.stack-work/install/x86_64-linux/lts-2.14/7.8.4/pkgdb \
-        --make -o AlanMain2 Main.hs
-
-        (We can get both GHC path and package DBs from running stack exec env in stage dir)
-        hans@bigtom:~/.alan/STAGE_ID$ stack exec env
-        PATH=/home/hans/.stack/programs/x86_64-linux/ghc-7.8.4/bin
-        GHC_PACKAGE_PATH=
-          /home/hans/.alan/STAGE_ID/.stack-work/install/x86_64-linux/lts-2.14/7.8.4/pkgdb
-          :
-          /home/hans/.stack/snapshots/x86_64-linux/lts-2.14/7.8.4/pkgdb
-          :
-          /home/hans/.stack/programs/x86_64-linux/ghc-7.8.4/lib/ghc-7.8.4/package.conf.d
-
-  -}
-
-  -- Instead of the sandbox, create a dummy stack project (generate stack.yaml and a dummy library if needed)
-  -- When compiling, concatenate GHC pack-db, lts pack-db (in .stack directory), and pack-db in stage.
-
 
 
 -- | Start a new performer using the given stage.
@@ -249,8 +192,6 @@ start (Stage stageId) sources = do
 
   -- Generate performer id (stageId+unique Message)
   let stageDir     = alanDir ++ "/" ++ stageId
-  -- TODO replace arch/OS/GHC version here by parsing cabal.sandbox.config and looking at package-db: field
-  let packDbDir    = stageDir ++ "/sb/x86_64-osx-ghc-7.10.2-packages.conf.d"
   let performerDir = alanDir ++ "/performers/" ++ performerId
 
   there <- liftIOWithException $ System.Directory.doesDirectoryExist performerDir
@@ -261,7 +202,7 @@ start (Stage stageId) sources = do
   -- Note: If the performer directory existed, files should exist too, but rewrite in case a file was accidentally removed
   -- Note that GHC won't recompile unless checksums are different
   writeSourceFiles performerDir sources
-  launchProcessCabal packDbDir performerDir ghcExe
+  launchProcessCabal performerDir ghcExe
   return $ Performer performerId
 
 
@@ -272,6 +213,8 @@ send :: Performer -> Message -> AlanServer ()
 
 [send] = undefined
 
+
+-- IMPLEMENTATION
 
 writeSourceFiles :: FilePath -> SourceTree -> AlanServer ()
 writeSourceFiles performerDir sources = do
@@ -306,9 +249,13 @@ addStageCabal there stageDir cabalExe dependencies = do
       ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
     return ()
 
-launchProcessCabal :: FilePath -> FilePath -> FilePath -> AlanServer ()
-launchProcessCabal packDbDir performerDir ghcExe = do
+launchProcessCabal :: FilePath -> FilePath -> AlanServer ()
+launchProcessCabal performerDir ghcExe = do
+  -- TODO replace arch/OS/GHC version here by parsing cabal.sandbox.config and looking at package-db: field
+  let packDbDir    = stageDir ++ "/sb/x86_64-osx-ghc-7.10.2-packages.conf.d"
+
   ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
+
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
     System.Process.proc ghcExe [
       "-package-db=" ++ packDbDir,
@@ -329,13 +276,64 @@ launchProcessCabal packDbDir performerDir ghcExe = do
   -- TODO handle termination
   return ()
 
-    -- If Bool is true, wipe out preexisting stage and restart
-    -- Create stage if not existing
-      -- Go to SB dir
-      -- <alanDir>/stages/a12b2246
-      -- Run cabal sandbox init
-      -- Run cabal sandbox install [packages]
-    -- Return Stage (with id)
+
+    {-
+      Stack implementation:
+        Add stage:
+
+          Create dummy Setup.hs, a.cabal, Main.hs and stack.yaml
+
+          Setup.hs
+  import Distribution.Simple
+  main = defaultMain
+
+            a.cabal
+  cabal-version: >= 1.2
+  name: a
+  version: 0.0.0.1
+  build-type: Simple
+
+  executable AlanDummy
+    main-is: Main.hs
+    hs-source-dirs: .
+    build-depends:
+      -- Exact package versions, i.e.
+      base,
+      Boolean ==0.2.3,
+      reverse-apply ==2.0.1
+
+            Main.hs
+  main = return ()
+
+          stack.yaml
+  resolver: lts-2.14 # resolver, if any
+  extra-deps:
+    - reverse-apply-2.0.1 # all packages not in resolver
+
+          Then do
+            stack build --install-ghc
+
+        Start:
+         ~/.stack/programs/x86_64-linux/ghc-7.8.4/bin/ghc \
+          -package-db=/home/hans/.stack/snapshots/x86_64-linux/lts-2.14/7.8.4/pkgdb \
+          -package-db=/home/hans/.alan/STAGE_ID/.stack-work/install/x86_64-linux/lts-2.14/7.8.4/pkgdb \
+          --make -o AlanMain2 Main.hs
+
+          (We can get both GHC path and package DBs from running stack exec env in stage dir)
+          hans@bigtom:~/.alan/STAGE_ID$ stack exec env
+          PATH=/home/hans/.stack/programs/x86_64-linux/ghc-7.8.4/bin
+          GHC_PACKAGE_PATH=
+            /home/hans/.alan/STAGE_ID/.stack-work/install/x86_64-linux/lts-2.14/7.8.4/pkgdb
+            :
+            /home/hans/.stack/snapshots/x86_64-linux/lts-2.14/7.8.4/pkgdb
+            :
+            /home/hans/.stack/programs/x86_64-linux/ghc-7.8.4/lib/ghc-7.8.4/package.conf.d
+
+    -}
+
+    -- Instead of the sandbox, create a dummy stack project (generate stack.yaml and a dummy library if needed)
+    -- When compiling, concatenate GHC pack-db, lts pack-db (in .stack directory), and pack-db in stage.
+
 
 
 
