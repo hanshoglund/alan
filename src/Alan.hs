@@ -341,6 +341,29 @@ addStageStack stageDir dependencies = do
 
 launchProcessStack :: FilePath -> FilePath -> AlanServer ()
 launchProcessStack stageDir performerDir = do
+  ghcExe <- liftIOWithException $ Prelude.readFile (stageDir ++ "/COMPILER")
+  ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
+
+  dbPaths <- fmap lines $ liftIOWithException $ Prelude.readFile (stageDir ++ "/COMPILER")
+
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
+    System.Process.proc ghcExe [
+      Data.List.intercalate " " $ fmap (\p -> "-package-db="++p) dbPaths,
+      "-threaded",
+      "-O2",
+      "-XSafe",
+      "-i" ++ performerDir, -- or .
+      "--make", "Main.hs",
+      "-o", performerDir ++ "/AlanMain"
+      ]
+  r <- liftIOWithException $ System.Process.waitForProcess p
+  case r of
+    ExitSuccess -> return ()
+    ExitFailure e -> throwError $ ghcExe ++ " exited with code: " ++ show e
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = emptyEnvironment }) $
+    System.Process.proc (performerDir ++ "/AlanMain") []
+
+  -- TODO handle termination
   -- Invoke GHC
   return ()
 
