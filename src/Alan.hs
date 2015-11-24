@@ -349,7 +349,7 @@ addStageStack stageDir dependencies = do
                 ]
 
   stackExe <- fmap (alanConfStackExecutable . alanStateConf) ask
-  stackEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
+  stackEnv <- liftIOWithException $ inheritSpecifically ["HOME", "PATH"]
 
   -- Run stack build --install-ghc
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = stackEnv }) $
@@ -429,7 +429,7 @@ launchProcessStack :: FilePath -> FilePath -> AlanServer ()
 launchProcessStack stageDir performerDir = do
   dbPaths <- fmap lines $ liftIOWithException $ Prelude.readFile (stageDir ++ "/PACKAGE_DBS")
   ghcExe <- fmap (++ "/ghc") $ liftIOWithException $ Prelude.readFile (stageDir ++ "/COMPILER")
-  ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
+  ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME", "PATH"]
 
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
     System.Process.proc ghcExe (fmap ("-package-db="++) dbPaths ++ [
