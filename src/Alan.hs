@@ -242,7 +242,6 @@ extra-deps:
 
   unless there $ do
     liftIOWithException $ System.Directory.createDirectoryIfMissing True stageDir
-    -- TODO cabal path
     (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
       $ System.Process.proc cabalExe ["sandbox", "init", "--sandbox", stageDir ++ "/sb"]
     r <- liftIOWithException $ System.Process.waitForProcess p
@@ -285,7 +284,6 @@ start (Stage stageId) sources = do
   let packDbDir    = stageDir ++ "/sb/x86_64-osx-ghc-7.10.2-packages.conf.d"
   let performerDir = alanDir ++ "/performers/" ++ performerId
 
-  -- TODO ghc path
   there <- liftIOWithException $ System.Directory.doesDirectoryExist performerDir
   unless there $ do
     liftIOWithException $ System.Directory.createDirectoryIfMissing True performerDir
