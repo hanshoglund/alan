@@ -56,6 +56,9 @@ Design notes:
     Top-level execitable alan (Alan/Main.hs) invokes either
     Keep top-level API simple (< 5 functions)
 
+    All persistant state is stored in the Alan directory
+    No  processes spawned by Alan are daemons, so no process leaks are possible
+
     Compiled modules can NOT access the IO monad. This is enforced as follows:
       Safe Haskell is used to compile user code
       User code is not allowed to define @Main.main@ (in safe Haskell, the only way to run an IO computation is to be invoked by main)
@@ -134,8 +137,6 @@ type Persistent = String -- TODO JSON
 
 newtype AlanState = AlanState { alanStateConf :: AlanConfiguration }
 
--- All persistant state is stored in the Alan directory
--- All processes spawned by Alan are non-daemons, so no process leaks are possible
 newtype AlanServer a = AlanServer
   (ReaderT AlanState
     (ExceptT AlanServerError IO)
