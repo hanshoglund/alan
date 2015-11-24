@@ -67,13 +67,14 @@ Design notes:
     What type is Main.alanMain? It should be something simple that does not require user code to import Alan.
     Libraries can be written to facilitate use of this type later on (i.e. an Alan) monad.
 
-    The server runs in a single Alan directory, where all the stages (housing package-dbs) and performers (housing sources and artefacts) are stored.
+    The server runs in a single Alan directory, where all the stages (housing dependency related information, typically package-dbs)
+    and performers (housing everything related to a running process, including sources and binaries) are stored.
       The Alan directory should NOT be shared between server processes.
       All persistant state is stored in the Alan directory. Note that the AlanServer monad is conceptually effect-free,
       so anything created in the Alan directory should be for caching/optimization purposes and not affect behavior at all.
     The AlanServer monad is sequential but not thread-safe.
       COROLLARY
-        Any invocation of AlanServer methods from server wrappers must be queued.
+        Any invocation of AlanServer methods from server a wrapper must be queued.
 
     The API is deliberately vague about HOW the submitted code is executed, as part of point of Alan is to hide system-specific details.
 
