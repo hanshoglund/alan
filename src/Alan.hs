@@ -40,10 +40,12 @@ module Alan (
   AlanServer,
   runAlanServer,
 
-  Stage,
-  Performer,
   Package,
   SourceTree,
+  Dependencies(..),
+
+  Stage,
+  Performer,
   addStage,
   start,
   send
@@ -161,13 +163,20 @@ data Performer = Performer String -- Must be JSONable
 type Package    = (String, Version) -- I.e. [("aeson", fromString "0.10.0.0")]
 type SourceTree = [(FilePath, String)] -- I.e. [("Main.hs","module Main where alan = ...")]
 
+-- | All packages (as would be specified in a Cabal file), with a compatible Stack resolver.
+
+-- Current implementation (always ignores resolver):
+  -- Cabal: Any system level package + the ones specified here
+  -- Stack: Packages in default resolver + the ones specified here
+data Dependencies = Dependencies { getResolver :: String, getDependencies :: [Package] }
+
 -- | Create a new stage.
-addStage :: [Package] -> AlanServer Stage
+addStage :: Dependencies -> AlanServer Stage
 addStage dependencies = do
   let overwrite = False
 
   -- Generate ID
-  let stageId = hashJson $ (fmap (fmap show) dependencies)
+  let stageId = hashJson $ (fmap (fmap show) (getDependencies dependencies))
 
   -- Compute relevant paths
   homeDir  <- liftIOWithException $ System.Directory.getHomeDirectory
@@ -231,7 +240,7 @@ writeFilesInDirectory dir sources = do
 
 
 -- | Prepare the given stage directory with the given dependencies.
-addStageCabal :: FilePath -> [Package] -> AlanServer ()
+addStageCabal :: FilePath -> Dependencies -> AlanServer ()
 addStageCabal stageDir dependencies = do
   -- TODO does not work if (null dependencies == True)
   cabalExe <- fmap (alanConfCabalExecutable . alanStateConf) ask
@@ -249,7 +258,7 @@ addStageCabal stageDir dependencies = do
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
     $ System.Process.proc cabalExe (["-j", "install"]
       ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version)
-      dependencies)
+      (getDependencies dependencies))
   r <- liftIOWithException $ System.Process.waitForProcess p
   case r of
     ExitSuccess -> return ()
@@ -287,18 +296,20 @@ launchProcessCabal stageDir performerDir = do
   -- TODO handle termination
   return ()
 
--- TODO change format to support arbitrary resolvers
 -- Currently Cabal/GHC assumes global conf, and Stack assumes lts-3.15
-addStageStack :: FilePath -> [Package] -> AlanServer ()
+addStageStack :: FilePath -> Dependencies -> AlanServer ()
 addStageStack stageDir dependencies = do
 
-  -- TODO all packages from resolver inst of just base
   let resolver         = "lts-3.15"
-  let cabalPackageSpec = Data.List.intercalate "\n" $ ["base"]
-  let stackPackageSpec = Data.List.intercalate "\n" $ [""]
+  let cabalPackageSpec = Data.List.intercalate "\n" $
+        (fmap (\(name,version) -> "        " ++ name ++ " ==" ++ showVersion version) $ getDependencies dependencies)
+  let stackPackageSpec = Data.List.intercalate "\n" $
+        -- TODO should remove all packages present in the resolver
+        -- (though Stack tolerates them)
+        (fmap (\(name,version) -> "  - " ++ name ++ "-" ++ showVersion version) $ getDependencies dependencies)
 
   -- Create dummy Setup.hs, a.cabal, Main.hs and stack.yaml
-  let files = [
+  writeFilesInDirectory stageDir [
         ("Setup.hs", "import Distribution.Simple\n"
                   ++ "main = defaultMain\n"),
         ("Main.hs",  "main = return ()\n"),
@@ -318,7 +329,6 @@ addStageStack stageDir dependencies = do
                   ++ "extra-deps:\n"
                   ++ stackPackageSpec)
                 ]
-  writeFilesInDirectory stageDir files
 
   stackExe <- fmap (alanConfStackExecutable . alanStateConf) ask
   stackEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
@@ -333,11 +343,21 @@ addStageStack stageDir dependencies = do
 
 
   -- Run stack exec env
-  -- Parse env
-  -- Create files "$performerDir/COMPILER"
-  -- Create files "$performerDir/PACKAGE_DBS"
+  (r,out,err) <- liftIOWithException $ flip System.Process.readCreateProcessWithExitCode "" $ (\x -> x { cwd = Just stageDir, env = stackEnv }) $
+    System.Process.proc stackExe ["exec", "env"]
+  case r of
+    ExitSuccess -> return ()
+    ExitFailure e -> throwError $ stackExe ++ " exited with code " ++ show e ++ " and message " ++ err
 
+  let (compiler, packDbs) = getCompilerAndPackagePathFromEnv out
+  writeFilesInDirectory stageDir [
+        (stageDir ++ "/COMPILER", compiler),
+        (stageDir ++ "/PACKAGE_DBS", unlines packDbs)
+        ]
   return ()
+
+getCompilerAndPackagePathFromEnv :: String -> (String, [String])
+getCompilerAndPackagePathFromEnv = undefined
 
 launchProcessStack :: FilePath -> FilePath -> AlanServer ()
 launchProcessStack stageDir performerDir = do
