@@ -126,10 +126,11 @@ data AlanConfiguration  = AlanConfiguration {
   alanConfAlanDirectory   :: Maybe FilePath -- defaults to ~/.alan
   }
 -- TODO in monad to suppot the actual paths above
-defAlanConfiguration = AlanConfiguration {
-  alanConfGhcExecutable = "/usr/bin/ghc",
-  alanConfCabalExecutable         = "/usr/bin/cabal",
-  alanConfAlanDirectory = Nothing
+defAlanConfiguration      = AlanConfiguration {
+  alanConfGhcExecutable   = "/usr/bin/ghc",
+  alanConfCabalExecutable = "/usr/bin/cabal",
+  alanStackExecutable     = "stack",
+  alanConfAlanDirectory   = Nothing
   }
 
 
@@ -159,21 +160,15 @@ data Performer = Performer String -- Must be JSONable
 type Package    = (String, Version) -- I.e. [("aeson", fromString "0.10.0.0")]
 type SourceTree = [(FilePath, String)] -- I.e. [("Main.hs","module Main where alan = ...")]
 
--- For now, document that only one instance of alan should be run over an alan directory (they can run over different directories though)
--- Eventually lock on PID or similar (i.e. alan server writes its PID to the alan dir before operating and refuses to proceed
--- if a process with that PID exists on the system)
-
 -- | Create a new stage.
 addStage :: [Package] -> AlanServer Stage
 addStage dependencies = do
   let overwrite = False
 
-  -- TODO cabal impl does not work if (null dependencies)
-
   -- Generate stage ID (hash of deps)
   let stageId = hashJson $ (fmap (fmap show) dependencies)
-  homeDir <- liftIOWithException $ System.Directory.getHomeDirectory
-  alanDir <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory . alanStateConf) ask
+  homeDir  <- liftIOWithException $ System.Directory.getHomeDirectory
+  alanDir  <- fmap (Data.Maybe.fromMaybe (homeDir ++ "/.alan") . alanConfAlanDirectory . alanStateConf) ask
   cabalExe <- fmap (alanConfCabalExecutable . alanStateConf) ask
   ghcExe   <- fmap (alanConfGhcExecutable . alanStateConf) ask
   let stageDir = alanDir ++ "/" ++ stageId
@@ -181,6 +176,8 @@ addStage dependencies = do
   there <- liftIOWithException $ System.Directory.doesDirectoryExist stageDir
   when (there && overwrite) $ liftIOWithException $ System.Directory.removeDirectoryRecursive stageDir
 
+  addStageCabal there stageDir cabalExe dependencies
+  return $ Stage stageId
   -- TODO Stack implementation
   {-
     Stack implementation:
@@ -239,36 +236,7 @@ extra-deps:
   -- Instead of the sandbox, create a dummy stack project (generate stack.yaml and a dummy library if needed)
   -- When compiling, concatenate GHC pack-db, lts pack-db (in .stack directory), and pack-db in stage.
 
-  cabalEnv <- liftIOWithException $ overwriteEnvironment "FOO" "bar"
 
-  unless there $ do
-    liftIOWithException $ System.Directory.createDirectoryIfMissing True stageDir
-    (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
-      $ System.Process.proc cabalExe ["sandbox", "init", "--sandbox", stageDir ++ "/sb"]
-    r <- liftIOWithException $ System.Process.waitForProcess p
-    case r of
-      ExitSuccess -> return ()
-      ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
-    return ()
-
-    (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
-      $ System.Process.proc cabalExe (["-j", "install"]
-        ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version)
-        dependencies)
-    r <- liftIOWithException $ System.Process.waitForProcess p
-    case r of
-      ExitSuccess -> return ()
-      ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
-    return ()
-
-  return $ Stage stageId
-    -- If Bool is true, wipe out preexisting stage and restart
-    -- Create stage if not existing
-      -- Go to SB dir
-      -- <alanDir>/stages/a12b2246
-      -- Run cabal sandbox init
-      -- Run cabal sandbox install [packages]
-    -- Return Stage (with id)
 
 -- | Start a new performer using the given stage.
 start :: Stage -> SourceTree -> AlanServer Performer
@@ -292,13 +260,56 @@ start (Stage stageId) sources = do
 
   -- Note: If the performer directory existed, files should exist too, but rewrite in case a file was accidentally removed
   -- Note that GHC won't recompile unless checksums are different
+  writeSourceFiles performerDir sources
+  launchProcessCabal packDbDir performerDir ghcExe
+  return $ Performer performerId
+
+
+-- | Send a message to the given perfomer.
+send :: Performer -> Message -> AlanServer ()
+  -- Write to input
+  -- Block waiting for output
+
+[send] = undefined
+
+
+writeSourceFiles :: FilePath -> SourceTree -> AlanServer ()
+writeSourceFiles performerDir sources = do
   forM_ sources $ \(path,code) -> do
     liftIOWithException $ System.Directory.createDirectoryIfMissing True (FilePath.takeDirectory (performerDir ++ "/" ++ path))
     liftIOWithException $ System.IO.writeFile (performerDir ++ "/" ++ path) code
     return ()
 
-  environ <- liftIOWithException $ inheritSpecifically ["HOME"]
-  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = environ }) $
+
+-- TODO does not work if (null dependencies == True)
+addStageCabal :: Bool -> FilePath -> FilePath -> [Package] -> AlanServer ()
+addStageCabal there stageDir cabalExe dependencies = do
+  cabalEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
+
+  unless there $ do
+    liftIOWithException $ System.Directory.createDirectoryIfMissing True stageDir
+    (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
+      $ System.Process.proc cabalExe ["sandbox", "init", "--sandbox", stageDir ++ "/sb"]
+    r <- liftIOWithException $ System.Process.waitForProcess p
+    case r of
+      ExitSuccess -> return ()
+      ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
+    return ()
+
+    (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = cabalEnv })
+      $ System.Process.proc cabalExe (["-j", "install"]
+        ++ fmap (\(name,version) -> name ++ "-" ++ showVersion version)
+        dependencies)
+    r <- liftIOWithException $ System.Process.waitForProcess p
+    case r of
+      ExitSuccess -> return ()
+      ExitFailure e -> throwError $ cabalExe ++ " exited with code: " ++ show e
+    return ()
+
+launchProcessCabal :: FilePath -> FilePath -> FilePath -> AlanServer ()
+launchProcessCabal packDbDir performerDir ghcExe = do
+  ghcEnv <- liftIOWithException $ inheritSpecifically ["HOME"]
+  (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
     System.Process.proc ghcExe [
       "-package-db=" ++ packDbDir,
       "-threaded",
@@ -315,22 +326,18 @@ start (Stage stageId) sources = do
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = emptyEnvironment }) $
     System.Process.proc (performerDir ++ "/AlanMain") []
 
-  -- Go to perf dir, place sources here
-    -- <alanDir>/performers/<performerId>
-  -- Add wrapping alanMain
-  -- Compile or interpret this code with stage pack-db, launch result
-  -- Performers are NOT daemons
+  -- TODO handle termination
+  return ()
 
--- compile/eval code, using package DBs from Stage
-  return $ Performer performerId
+    -- If Bool is true, wipe out preexisting stage and restart
+    -- Create stage if not existing
+      -- Go to SB dir
+      -- <alanDir>/stages/a12b2246
+      -- Run cabal sandbox init
+      -- Run cabal sandbox install [packages]
+    -- Return Stage (with id)
 
 
--- | Send a message to the given perfomer.
-send :: Performer -> Message -> AlanServer ()
-  -- Write to input
-  -- Block waiting for output
-
-[send] = undefined
 
 -- -- The running procs are restricted to this type
 -- data AlanProc = forall s . AlanProc (Maybe Persistent -> (s, Message -> s -> (Maybe Persistent, Maybe Message, s)))
