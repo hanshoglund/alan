@@ -198,7 +198,8 @@ addStage dependencies = do
   when (there && overwrite) $ liftIOWithException $ System.Directory.removeDirectoryRecursive stageDir
 
   -- Create the stage
-  unless there $ addStageCabal stageDir dependencies
+  -- unless there $ addStageCabal stageDir dependencies
+  unless there $ addStageStack stageDir dependencies
   return $ Stage stageId
 
 
@@ -224,7 +225,10 @@ start (Stage stageId) sources = do
   -- Note: If the performer directory existed, files should exist too, but rewrite in case a file was accidentally removed
   -- Note that GHC won't recompile unless checksums are different
   writeFilesInDirectory performerDir sources
-  launchProcessCabal stageDir performerDir
+
+  -- launchProcessCabal stageDir performerDir
+  launchProcessStack stageDir performerDir
+
   return $ Performer performerId
 
 
@@ -309,7 +313,7 @@ addStageStack :: FilePath -> Dependencies -> AlanServer ()
 addStageStack stageDir dependencies = do
 
   let resolver         = "lts-3.15"
-  let cabalPackageSpec = Data.List.intercalate "\n" $
+  let cabalPackageSpec = Data.List.intercalate ",\n" $
         (fmap (\(name,version) -> "        " ++ name ++ " ==" ++ showVersion version) $ getDependencies dependencies)
   let stackPackageSpec = Data.List.intercalate "\n" $
         -- TODO should remove all packages present in the resolver
@@ -324,13 +328,12 @@ addStageStack stageDir dependencies = do
         ("a.cabal", "cabal-version: >= 1.2\n"
                   ++ "name:         a\n"
                   ++ "version:      0.0.0.1\n"
-                  ++ "build-type:   simple\n"
+                  ++ "build-type:   Simple\n"
                   ++ "\n"
                   ++ "executable AlanDummy\n"
-                  ++ "main-is: Main.hs\n"
-                  ++ "hs-source-dirs: .\n"
-                  ++ "build-depends:\n"
-                  ++ "\n"
+                  ++ "    main-is: Main.hs\n"
+                  ++ "    hs-source-dirs: .\n"
+                  ++ "    build-depends:\n"
                   ++ cabalPackageSpec),
         ("stack.yaml",
                      "resolver: " ++ resolver ++ "\n"
@@ -352,11 +355,12 @@ addStageStack stageDir dependencies = do
 
   -- Run stack exec env
   (r,out,err) <- liftIOWithException $ flip System.Process.readCreateProcessWithExitCode "" $ (\x -> x { cwd = Just stageDir, env = stackEnv }) $
-    System.Process.proc stackExe ["exec", "env"]
+    System.Process.proc stackExe ["exec", "/usr/bin/env"]
   case r of
     ExitSuccess -> return ()
     ExitFailure e -> throwError $ stackExe ++ " exited with code " ++ show e ++ " and message " ++ err
 
+  writeFilesInDirectory stageDir [("ENV-DEBUG", out)]
   (compiler, packDbs) <- getCompilerAndPackagePathFromEnv out
   writeFilesInDirectory stageDir [
         (stageDir ++ "/COMPILER", compiler),
@@ -366,8 +370,9 @@ addStageStack stageDir dependencies = do
 
 getCompilerAndPackagePathFromEnv :: String -> AlanServer (String, [String])
 getCompilerAndPackagePathFromEnv str = case runParser par str of
-  Just (Res (First (Just compiler), First (Just packDbs))) -> return (compiler, packDbs)
-  _ -> throwError $ "Could not parse env"
+  Right (Res (First (Just compiler), First (Just packDbs))) -> return (compiler, packDbs)
+  Right x -> throwError $ "Could not parse env: strange result: " ++ show x
+  Left e -> throwError $ "Could not parse env: " ++ e
   where
     ls :: [String]
     ls = lines str
@@ -391,23 +396,23 @@ findCompilerPath xs = case Data.List.find (".stack/programs" `Data.List.isInfixO
 -- PATH line, separated by :, the one containing .stack/programs/
 pathParser :: Parser [String]
 pathParser = do
-  CP.string "PATH"
+  CP.string "PATH="
   r <- P.sepBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
   return r
 
 -- GHC_PACKAGE_PATH, separated by :
 packDbParser :: Parser [String]
 packDbParser = do
-  CP.string "GHC_PACKAGE_PATH"
+  CP.string "GHC_PACKAGE_PATH="
   r <- P.sepBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
   return r
 
 -- MonadPlus, Parsing, CharParsing
 type Parser = RP.ReadP
-runParser :: Parser a -> String -> Maybe a
+runParser :: Parser a -> String -> Either String a
 runParser x input = case RP.readP_to_S x input of
-  []          -> Nothing
-  ((x,_) : _) -> Just x
+  []          -> Left "ReadP failed"
+  ((x,_) : _) -> Right x
 
 launchProcessStack :: FilePath -> FilePath -> AlanServer ()
 launchProcessStack stageDir performerDir = do
