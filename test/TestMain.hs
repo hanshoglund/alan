@@ -4,6 +4,7 @@ module Main where
 import Alan
 import Data.Version
 import Control.Concurrent
+import Control.Monad
 import Control.Monad (forever)
 import Control.Monad.Except (liftIO)
 import qualified Data.List
@@ -47,7 +48,8 @@ main = do
     --   ("Beta.hs",       "module Beta where import Data.IORef; beta = 'b'"),
     --   ("Main.hs",       "module Main where import Foo.Alpha; import Beta(beta); main = writeFile \"Output.txt\" (show (take 2001 $ repeat $ (22::Int)) ++ \"\\nDone!\\n\") ")]
 
-    pf <- start s [("Main.hs", "main = print [100..200]")]
+    pf <- forM [0..500] $ \_ -> start s [("Main.hs", "import Control.Concurrent(threadDelay);   main = threadDelay 10000000 >> main")]
+
     liftIO $ print pf
     forever $ liftIO $ threadDelay 1000
     return ()
