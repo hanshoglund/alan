@@ -122,6 +122,7 @@ import System.Exit (ExitCode(..))
 -- API
 
 type AlanServerError = String
+type AlanServerLogged = String
 
 data AlanConfiguration  = AlanConfiguration {
   -- At the moment, each Alan server requires a preinstalled GHC and Cabal
@@ -144,6 +145,9 @@ type Message    = String -- TODO JSON
 type Persistent = String -- TODO JSON
 
 newtype AlanState = AlanState { alanStateConf :: AlanConfiguration }
+-- Store handler to which log msgs are sent
+-- Store ProcessHandle for each performer we have spawned, indexed by performed id
+-- Store I/O handles
 
 newtype AlanServer a = AlanServer
   (ReaderT AlanState
@@ -160,7 +164,10 @@ runAlanServer conf (AlanServer x) = runExceptT (runReaderT x (AlanState conf))
 
 data Stage = Stage String -- Must be JSONable
   deriving (Show)
-data Performer = Performer String -- Must be JSONable
+
+data Performer = Performer
+  String -- 128-bit hash
+  -- Int    -- Instance id
   deriving (Show)
 
 type Package    = (String, Version) -- I.e. [("aeson", fromString "0.10.0.0")]
@@ -179,7 +186,9 @@ addStage dependencies = do
   let overwrite = False
 
   -- Generate ID
-  let stageId = hashJson $ (fmap (fmap show) (getDependencies dependencies))
+  let stageId = hashJson $ (fmap (fmap show) (getDependencies dependencies)
+    --, getResolver dependencies)
+          )
 
   -- Compute relevant paths
   homeDir  <- liftIOWithException $ System.Directory.getHomeDirectory
@@ -203,7 +212,7 @@ start :: Stage -> SourceTree -> AlanServer Performer
 start (Stage stageId) sources = do
 
   -- Generate ID
-  let performerId = hashJson $ (sources,stageId)
+  let performerId = hashJson $ (sources, stageId)
 
   -- Compute relevant paths
   homeDir  <- liftIOWithException $ System.Directory.getHomeDirectory
