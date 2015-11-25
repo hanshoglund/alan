@@ -30,8 +30,8 @@ readDeps path = do
   return $ map readDep (lines str)
 
 main = do
-  print $ runParser par "GHC_PACKAGE_PATH=xyz"
-  putStrLn ""
+  putStrLn $ replicate 3  '\n'
+  putStrLn $ replicate 20 '-'
 
   alanRes <- runAlanServer defAlanConfiguration $ do
     -- deps <- liftIO $ readDeps "/Users/Hoglund/suite/DEPS"
@@ -42,15 +42,12 @@ main = do
             ]
 
     s <- addStage deps
-    pf <- start s [
-      ("Foo/Alpha.hs",  "module Foo.Alpha where beta = 'b'"),
-      ("Beta.hs",       "module Beta where import Data.IORef; beta = 'b'"),
-      ("Main.hs",       "module Main where import Foo.Alpha; import Beta(beta); main = writeFile \"Output.txt\" (show (take 2001 $ repeat $ (22::Int)) ++ \"\\nDone!\\n\") ")]
-    -- addStage False [("music-pitch-literal", makeVersion[1,9,0])]
-    -- addStage False [
-        -- ("music-pitch-literal", makeVersion[1,9,0])
-      -- , ("music-pitch", makeVersion[1,9,0])
-      -- ]
+    -- pf <- start s [
+    --   ("Foo/Alpha.hs",  "module Foo.Alpha where beta = 'b'"),
+    --   ("Beta.hs",       "module Beta where import Data.IORef; beta = 'b'"),
+    --   ("Main.hs",       "module Main where import Foo.Alpha; import Beta(beta); main = writeFile \"Output.txt\" (show (take 2001 $ repeat $ (22::Int)) ++ \"\\nDone!\\n\") ")]
+
+    pf <- start s [("Main.hs", "main = print [100..200]")]
     liftIO $ print pf
     forever $ liftIO $ threadDelay 1000
     return ()
