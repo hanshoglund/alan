@@ -350,7 +350,7 @@ addStageStack stageDir dependencies = do
 
   -- Run stack build --install-ghc
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just stageDir, env = stackEnv }) $
-    System.Process.proc stackExe ["build", "--install-ghc"]
+    System.Process.proc stackExe ["build", "--install-ghc", "--no-system-ghc"]
   r <- liftIOWithException $ System.Process.waitForProcess p
   case r of
     ExitSuccess -> return ()
@@ -359,7 +359,7 @@ addStageStack stageDir dependencies = do
 
   -- Run stack exec env
   (r,out,err) <- liftIOWithException $ flip System.Process.readCreateProcessWithExitCode "" $ (\x -> x { cwd = Just stageDir, env = stackEnv }) $
-    System.Process.proc stackExe ["exec", "/usr/bin/env"]
+    System.Process.proc stackExe ["--no-system-ghc", "exec", "/usr/bin/env"]
   case r of
     ExitSuccess -> return ()
     ExitFailure e -> throwError $ stackExe ++ " exited with code " ++ show e ++ " and message " ++ err
