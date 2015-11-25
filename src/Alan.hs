@@ -100,7 +100,6 @@ import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Foldable (asum)
-import Data.Supply
 import Data.Version
 import System.Process
 import qualified Control.Exception
