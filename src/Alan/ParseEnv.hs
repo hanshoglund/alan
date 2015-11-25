@@ -4,10 +4,13 @@
 -- | Utilities for extracting compiler name and package database locations from the environment.
 module Alan.ParseEnv (
   getCompilerAndPackagePathFromEnv,
+
   -- * Parsers
   Parser,
-  compilerAndPackagePathParser,
   runParser,
+
+  Res(..),
+  compilerAndPackagePathParser,
 ) where
 
 import Control.Applicative
@@ -71,7 +74,9 @@ runParser :: Parser a -> String -> Either String a
 --   []          -> Left "ReadP failed"
 --   ((x,_) : _) -> Right x
 
-type Parser = Parsec.Parsec String ()
-runParser x input = case Parsec.runParser x () "unnamed" input of
+newtype Parser a = P { unP :: Parsec.Parsec String () a }
+  deriving (Functor, Applicative, Monad, Alternative, P.Parsing, CP.CharParsing)
+
+runParser (P x) input = case Parsec.runParser x () "unnamed" input of
   Left e -> Left (show e)
   Right x -> Right x
