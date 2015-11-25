@@ -49,6 +49,9 @@ module Alan (
   addStage,
   start,
   send,
+  ParseMessage(..),
+  Queue,
+  receive,
 
   ) where
 
@@ -89,7 +92,35 @@ Design notes:
       - How are the processes launched?
       - How does communication between the processes and Alan (hence the world) happen. File handles, sockets, runtime linking,
         shared memory etc.
+
+    How to communicate with a running performer?
+
+    - In the compile/launch strategy (currently the only one, and the required one if multiple language dialetcs are used),
+    the only proper way is to use binary protocols.
+    - We want some simple default that can be used to build more powerful stuff on top, i.e.
+      - Line separated strings
+      - Line separated JSON messages
+      - Sequences that can be parsed incrementally with attoparsec and trigger an event as soon as a correct parse occurs
+    - Base API (on the server side)
+      - Sends raw byte sequences (in the AlanServer monad)
+      - Provides polling recv in AlanServer monad for simpicity
+        - Alternative: there is a separate thread blocking on each incoming handle (fits well with attoparsec etc).
+
+            type Parsing fail a = ByteString -> Either3 fail a (Parsing a)
+            type Parsing fail a = ByteString -> ((fail -> r) -> (a -> r) -> (Parsing fail -> r) -> r)
+
+            send : ByteString -> AS ()
+            recv : Parsing fail a -> AS (Either fail a)
+
+
+
+Either  a b   = ((a -> c) -> (b -> c) -> c)
+Either3 a b c = ((a -> r) -> (b -> r) -> (c -> r) -> r)
+
 -}
+
+import qualified Data.ByteString
+import Data.ByteString (ByteString)
 
 import Control.Applicative
 import Control.Monad.Except
@@ -240,8 +271,20 @@ send :: Performer -> Message -> AlanServer ()
   -- Write to input
   -- Block waiting for output
 
-[send] = undefined
 
+-- newtype ParseMessage fail a = PM (forall r . ((fail -> r) -> (a -> r) -> ((ByteString -> ParseMessage fail a) -> r) -> r))
+
+newtype ParseMessage a = PM
+  (Either (ByteString -> ParseMessage a) a)
+newtype Queue a = Q a
+
+receive :: (ByteString -> ParseMessage a) -> AlanServer (Queue a)
+[send, receive] = undefined
+
+
+-- Attoparsec example
+-- resultToPm r = case r of { Partial f -> (PM $ Left (\bs -> resultToPm $ f bs)) ; Done _ x -> PM (Right (Right x)) ; Fail _ _ e -> PM (Right (Left e)) }
+-- receiveAtto parser = receive (\bs -> resultToPm (parse parser bs))
 
 -- IMPLEMENTATION
 
