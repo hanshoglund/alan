@@ -201,6 +201,7 @@ addStage dependencies = do
 
   -- Create the stage
   -- unless there $ addStageCabal stageDir dependencies
+  -- FIXME on failure stage is considered to exist
   unless there $ addStageStack stageDir dependencies
   return $ Stage stageId
 
