@@ -186,9 +186,7 @@ addStage dependencies = do
   let overwrite = False
 
   -- Generate ID
-  let stageId = hashJson $ (fmap (fmap show) (getDependencies dependencies)
-    --, getResolver dependencies)
-          )
+  let stageId = hashJson $ (fmap (fmap show) (getDependencies dependencies), getResolver dependencies)
 
   -- Compute relevant paths
   homeDir  <- liftIOWithException $ System.Directory.getHomeDirectory
