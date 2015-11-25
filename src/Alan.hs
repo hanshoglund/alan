@@ -50,11 +50,6 @@ module Alan (
   start,
   send,
 
-  -- DEBUG
-  runParser,
-  par,
-  pathParser,
-  packDbParser,
   ) where
 
 {-
@@ -102,27 +97,21 @@ import Control.Monad.Reader
 import Data.Foldable (asum)
 import Data.Version
 import System.Process
+import Data.Monoid
 import qualified Control.Exception
 import qualified System.IO
-import Data.Monoid
-
--- For hash
 import qualified Data.Aeson
 import Data.Aeson (ToJSON, FromJSON)
 import qualified Numeric
 import qualified Crypto.Hash.MD5 as MD5
-import Data.ByteString as LBS
+import qualified Data.ByteString as LBS
 import qualified System.Directory
 import qualified System.Process
 import qualified Data.Maybe
 import qualified Data.Map as Map
 import qualified Data.List
 
-import qualified Text.Parser.Combinators as P
-import qualified Text.Parser.Char as CP
--- import qualified Text.ParserCombinators.ReadP as RP
-import qualified Text.Parsec as Parsec
-
+import Alan.ParseEnv
 
 import qualified System.Environment
 import qualified System.FilePath.Posix as FilePath
@@ -374,55 +363,55 @@ addStageStack stageDir dependencies = do
         ]
   return ()
 
-getCompilerAndPackagePathFromEnv :: String -> AlanServer (String, [String])
-getCompilerAndPackagePathFromEnv str = case runParser par str of
-  Right (Res (First (Just compiler), First (Just packDbs))) -> return (compiler, packDbs)
-  Right x -> throwError $ "Could not parse env: strange result: " ++ show x
-  Left e -> throwError $ "Could not parse env: " ++ e
-  where
-    ls :: [String]
-    ls = lines str
-
-newtype Res = Res (First String, First [String]) -- compiler, packDbs
-  deriving (Show, Monoid)
-
-par :: Parser Res
-par = fmap mconcat $ P.sepEndBy1 (asum [
-  P.try $ fmap (findCompilerPath) pathParser,
-  P.try $ fmap (\dbs -> Res (mempty,First (Just dbs))) packDbParser,
-  P.try $ eatLine
-  ]) (CP.string "\n")
-  where
-    eatLine = P.many (CP.noneOf "\n") >> return mempty
-
-findCompilerPath xs = case Data.List.find (".stack/programs" `Data.List.isInfixOf`) xs of
-  Nothing -> mempty
-  Just x  -> Res (First (Just x),mempty)
-
--- PATH line, separated by :, the one containing .stack/programs/
-pathParser :: Parser [String]
-pathParser = do
-  CP.string "PATH="
-  r <- P.sepEndBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
-  return r
-
--- GHC_PACKAGE_PATH, separated by :
-packDbParser :: Parser [String]
-packDbParser = do
-  CP.string "GHC_PACKAGE_PATH="
-  r <- P.sepEndBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
-  return r
-
--- MonadPlus, Parsing, CharParsing
--- type Parser = RP.ReadP
-runParser :: Parser a -> String -> Either String a
--- runParser x input = case RP.readP_to_S x input of
---   []          -> Left "ReadP failed"
---   ((x,_) : _) -> Right x
-type Parser = Parsec.Parsec String ()
-runParser x input = case Parsec.runParser x () "Noname" input of
-  Left e -> Left (show e)
-  Right x -> Right x
+-- getCompilerAndPackagePathFromEnv :: String -> AlanServer (String, [String])
+-- getCompilerAndPackagePathFromEnv str = case runParser par str of
+--   Right (Res (First (Just compiler), First (Just packDbs))) -> return (compiler, packDbs)
+--   Right x -> throwError $ "Could not parse env: strange result: " ++ show x
+--   Left e -> throwError $ "Could not parse env: " ++ e
+--   where
+--     ls :: [String]
+--     ls = lines str
+--
+-- newtype Res = Res (First String, First [String]) -- compiler, packDbs
+--   deriving (Show, Monoid)
+--
+-- par :: Parser Res
+-- par = fmap mconcat $ P.sepEndBy1 (asum [
+--   P.try $ fmap (findCompilerPath) pathParser,
+--   P.try $ fmap (\dbs -> Res (mempty,First (Just dbs))) packDbParser,
+--   P.try $ eatLine
+--   ]) (CP.string "\n")
+--   where
+--     eatLine = P.many (CP.noneOf "\n") >> return mempty
+--
+-- findCompilerPath xs = case Data.List.find (".stack/programs" `Data.List.isInfixOf`) xs of
+--   Nothing -> mempty
+--   Just x  -> Res (First (Just x),mempty)
+--
+-- -- PATH line, separated by :, the one containing .stack/programs/
+-- pathParser :: Parser [String]
+-- pathParser = do
+--   CP.string "PATH="
+--   r <- P.sepEndBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
+--   return r
+--
+-- -- GHC_PACKAGE_PATH, separated by :
+-- packDbParser :: Parser [String]
+-- packDbParser = do
+--   CP.string "GHC_PACKAGE_PATH="
+--   r <- P.sepEndBy (P.many (asum [CP.alphaNum, CP.oneOf "_-./"])) (CP.char ':')
+--   return r
+--
+-- -- MonadPlus, Parsing, CharParsing
+-- -- type Parser = RP.ReadP
+-- runParser :: Parser a -> String -> Either String a
+-- -- runParser x input = case RP.readP_to_S x input of
+-- --   []          -> Left "ReadP failed"
+-- --   ((x,_) : _) -> Right x
+-- type Parser = Parsec.Parsec String ()
+-- runParser x input = case Parsec.runParser x () "Noname" input of
+--   Left e -> Left (show e)
+--   Right x -> Right x
 
 launchProcessStack :: FilePath -> FilePath -> AlanServer ()
 launchProcessStack stageDir performerDir = do
