@@ -68,7 +68,7 @@ executable alan
 test-suite test-alan
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
-  main-is:             Main.hs
+  main-is:             TestMain.hs
   build-depends:       base         >=4.8       && <4.9
                      , mtl          >= 2.2.1    && < 3
                      , aeson        >= 0.8.0.2 && < 1
