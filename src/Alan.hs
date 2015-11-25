@@ -433,7 +433,7 @@ launchProcessStack stageDir performerDir = do
       "-threaded",
       "-O2",
       "-XSafe",
-      "-v", -- TODO
+      -- "-v", -- TODO
       "-i" ++ performerDir, -- or .
       "--make", "Main.hs",
       "-o", performerDir ++ "/AlanMain"
