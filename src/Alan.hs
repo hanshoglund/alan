@@ -30,16 +30,15 @@ Usage:
 @
 -}
 module Alan (
+  -- * Running an Alan server
   AlanServerError,
-  Message,
-  Persistent,
-
   AlanConfiguration(..),
   defAlanConfiguration,
-
+  -- ** The AlanServer type
   AlanServer,
   runAlanServer,
 
+  -- * Creating stages and performers
   Package,
   SourceTree,
   Dependencies(..),
@@ -48,11 +47,18 @@ module Alan (
   Performer,
   addStage,
   start,
+  await,
+
+  -- * Communicating with performers
   send,
 
   ParseMessage(..),
-  Queue,
   receive,
+
+  -- * The Channel type
+  Channel,
+  readChannel,
+  tryReadChannel,
 
   ) where
 
@@ -292,20 +298,30 @@ start (Stage stageId) sources = do
   return $ Performer performerId
 
 
+await :: Performer -> AlanServer ExitCode
+await = undefined
+
 -- | Send a message to the given perfomer.
-send :: Performer -> Message -> AlanServer ()
+send :: Performer -> ByteString -> AlanServer ()
   -- Write to input
   -- Block waiting for output
 
 
 -- newtype ParseMessage fail a = PM (forall r . ((fail -> r) -> (a -> r) -> ((ByteString -> ParseMessage fail a) -> r) -> r))
 
-newtype ParseMessage a = PM
-  (Either (ByteString -> ParseMessage a) (ByteString, a))
-newtype Queue a = Q a
+data ParseMessage a
+  = More (ByteString -> ParseMessage a)
+  | Done (a, ByteString)
 
-receive :: Performer -> (ByteString -> ParseMessage a) -> AlanServer (Queue a)
-[send, receive] = undefined
+newtype Channel a = Q a
+readChannel :: Channel a -> IO a
+tryReadChannel :: Channel a -> IO (Maybe a)
+[readChannel, tryReadChannel] = undefined
+
+
+poll    :: Performer -> (ByteString -> ParseMessage a) -> AlanServer [a]
+receive :: Performer -> (ByteString -> ParseMessage a) -> AlanServer (Channel a)
+[send, poll, receive] = undefined
 
 
 -- Attoparsec example
