@@ -70,21 +70,21 @@ Design notes:
   - Written as a library wrapped in a web server
   - Does NOT specify how the code is actually executed (as long as it is correct)
   - The core library is in a monad AlanServer
-  - At startup, the AlanServer computation claims a single Alan directory
+  - At startup (runAlanServer), the AlanServer computation claims a single Alan directory
     COROLLARY
       Multiple AlanServer's can be run in parallel using different directories
   - If the AlanServer monad fails, performers are killed, and the Alan directory is relinquished
     COROLLARY
       Users typically want to use catchError (or @try x = catchError (fmap Right x) (return . Left)@) to prevent this
-  - The AlanServer acts as a front-end to a single system of stages and performers
+  - The AlanServer monad acts as a front-end to a single system of stages and performers
+      - It is *not* safe to run overlapping AlanServer computations on the same directory
       - It maintains integrity of the directories (and thus the state of mangaged packages, compiler artifacts etc).
+      - It also maintains communication between performers and the user.
       - It can support parallel building of instances and possibly Stages (depending on whether Stack supports this).
       COROLLARY
         AlanServer calls can not block.
         Sending messages should be fast.
-        Recieving messages can be poll-based.
-          Alternatively:
-            - Some kind of promise/queue/observer pattern.
+        Recieving messages should be poll-based or use a promise/queue/observer pattern.
 
   Performers:
     - Compiled modules can NOT access the IO monad. This is enforced as follows:
