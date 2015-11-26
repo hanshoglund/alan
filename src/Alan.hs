@@ -21,12 +21,13 @@ The Safe Haskell mode is used to enforce this:
 
 @
 Usage:
-  alan serve --port 8675 &
+  alan serve
+  Alan running on...
 
-  alan add-stage mystage
-  alan start --url localhost --port 8675 mystage -I . Main.hs
-    Launches a new service, prints process ID.
-  alan send localhost a2b4c1b2 {"command":"status"}
+  alan start --add-stage -e "import Alan.Process.Pure.JSON ; process x = Object [("received", x)]"
+  alan interact --last
+  > {"foo":1}
+  {"received":{"foo":1}}
 @
 -}
 module Alan (
