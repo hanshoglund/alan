@@ -441,6 +441,7 @@ launchProcessCabal stageDir performerDir = do
       "-threaded",
       "-O2",
       "-XSafe",
+      "-D__ALAN__",
       "-i" ++ performerDir, -- or .
       "--make", "Main.hs",
       "-o", performerDir ++ "/AlanMain"
@@ -573,10 +574,16 @@ launchProcessStack stageDir performerDir = do
 
   (_,_,_,p) <- liftIOWithException $ System.Process.createProcess $ (\x -> x { cwd = Just performerDir, env = ghcEnv }) $
     System.Process.proc ghcExe (fmap ("-package-db="++) dbPaths ++ [
+
+      -- TODO many trade-offs between compilation speed, execution speed etc
+      -- Flags like -threaded obviously affect semantics (though only in IO)
       "-threaded",
-      "-O2",
-      "-XSafe",
+      -- "-O2",
+      -- "-XCPP", "-D__ALAN__=1",
       -- "-v", -- TODO
+
+      "-XSafe",
+
       "-i" ++ performerDir, -- or .
       "--make", "Main.hs",
       "-o", performerDir ++ "/AlanMain"
