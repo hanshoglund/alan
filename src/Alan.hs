@@ -21,13 +21,17 @@ The Safe Haskell mode is used to enforce this:
 
 @
 Usage:
-  alan serve
+  alan server
   Alan running on...
 
-  alan start --add-stage -e "import Alan.Process.Pure.JSON ; process x = Object [("received", x)]"
-  alan interact --last
+  alan start -e "import Alan.Process.Pure.JSON ; process x = Object [("received", x)]"
+  alan interact
   > {"foo":1}
   {"received":{"foo":1}}
+
+  alan start -e "import Alan.Process.Pure.JSON ; process x = Object [("received", x)]"
+  alan subscribe
+  alan send -e '{"foo":1}'
 @
 -}
 module Alan (
@@ -95,6 +99,60 @@ Design notes:
 
     - What type is Main.alanMain? It should be something simple that does not require user code to import Alan.
     - Libraries can be written to facilitate use of this type later on (i.e. an Alan) monad.
+
+
+  Command Line
+  ----------------------------------------------------------------------
+
+  alan server [--port N]
+    Start acting as a server on the given port. The server can be interacted with through the HTTP/Rest API, the websocket API
+    or by running the command line program.
+
+  alan add-stage [--host URL] [--port N] [--resolver STR] [--dependencies dependencies:STR...]
+    Create a new stage with the given resolver and dependencies.
+      - If either host, port are left, they are read from alan.yaml in the current directory, or ~/.alanconfig.yaml
+    Blocks until the stage is created.
+
+    If successful
+      - Outputs a string representing the stage on stdout.
+      - Updates alan.yaml in the current directory to use the new stage.
+      - Exits with 0.
+    If unsuccessful:
+      - Prints an error message on stderr.
+      - Exits with 1.
+
+  alan add-stage PATH
+    Create a new stage as per above. The given directory is scanned for a .cabal and stack.yaml files and
+    their resolvers and dependencies are concatenated and added to the stage.
+
+  alan start [--host] [--port N] [--stage] PATH
+    Start a performer using the stage specified in alan.yaml.
+      - If either host, port are left, they are read from alan.yaml in the current directory, or ~/.alanconfig.yaml
+
+      --add-stage Behave as if add-stage had been called with no arguments before this command.
+
+    Blocks until the performer has been recieved and type-checked by the server.
+    If successful
+      - Outputs a string representing the performer on stdout.
+      - Updates alan.yaml in the current directory to use the new performer.
+      - Exits with 0.
+    If unsuccessful:
+      - Prints an error message on stderr.
+      - Exits with 1.
+
+  alan send [performer]
+    Read lines from stdin, sending each line to the performer.
+  alan subscribe [performer]
+    Subscribes to messages from the given performer.
+    Prints all received messages to stdout, terminated by a line break.
+  alan interact [performer]
+    Read lines from stdin, sending each line to the performer.
+    Prints all received messages to stdout, terminated by a line break.
+
+
+  WebSocket API
+  ----------------------------------------------------------------------
+
 
 
   Longer (older) version
