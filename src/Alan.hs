@@ -636,10 +636,15 @@ liftIOWithException k = liftIO (Control.Exception.try k) >>= \x -> case x of
   Right x -> return x
 
 
+
+-- Primitives
+
 data M a
 instance Functor M
 instance Applicative M
 instance Monad M
+fork        :: M () -> M () -- todo block, stop
+
 data R
 data W
 data Var rw a
@@ -654,12 +659,14 @@ dupChan     :: Chan R a -> M (Chan R a)
 readChan    :: Chan R a -> M a
 tryReadChan :: Chan R a -> M (Maybe a)
 writeChan   :: Chan W a -> a -> M ()
-fork        :: M () -> M () -- todo block, stop
 
 newVar   :: a       -> M (Var R a, Var W a)
 readVar  :: Var R a -> M a
 writeVar :: Var W a -> a -> M ()
 [newChan, dupChan, readChan, tryReadChan, fork, writeChan, dupVar, newVar, readVar, writeVar] = undefined
+
+
+-- FRP interface
 
 type Event a = M (Chan R a)
 memptyE :: Event a
