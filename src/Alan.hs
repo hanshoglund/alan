@@ -668,6 +668,12 @@ writeVar :: Var W a -> a -> M ()
 
 -- FRP interface
 
+-- This implementation requires 'fork/ in the base monad.
+-- An alternative could be to use race/concurrently from "async":
+--   appendE: race
+--   scatter: race
+--   accum, snapshot, run: ?
+
 type Event a = M (Chan R a)
 memptyE :: Event a
 memptyE = fmap fst newChan
@@ -689,7 +695,7 @@ scatterE a = do
     forM_ vs (writeChan (snd z))
   return (fst z)
 type Beh a = M (Var R a)
--- trivial functor, applicative
+-- trivial functor, applicative?
 
 mapE :: (a -> b) -> Event a -> Event b
 mapE f = fmap (fmap f)
