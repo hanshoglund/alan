@@ -388,7 +388,7 @@ closeChannel :: Channel a -> IO ()
 
 
 receive :: Performer -> (ByteString -> ParseMessage a) -> AlanServer (Channel a)
-[send, poll, receive] = undefined
+[send, receive] = undefined
 
 
 -- Attoparsec example
