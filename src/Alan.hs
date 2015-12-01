@@ -372,13 +372,21 @@ data ParseMessage a
   = More (ByteString -> ParseMessage a)
   | Done (a, ByteString)
 
+-- | A simple channel type.
 newtype Channel a = Q a
+
+-- | Blocks until a message becomes available and then returns it.
+--   TODO exception if producers finishes.
 readChannel :: Channel a -> IO a
+
+-- | Non-blocking read. Returns the next message, if available.
 tryReadChannel :: Channel a -> IO (Maybe a)
-[readChannel, tryReadChannel] = undefined
+
+-- TODO do we need this?
+closeChannel :: Channel a -> IO ()
+[readChannel, tryReadChannel, closeChannel] = undefined
 
 
-poll    :: Performer -> (ByteString -> ParseMessage a) -> AlanServer [a]
 receive :: Performer -> (ByteString -> ParseMessage a) -> AlanServer (Channel a)
 [send, poll, receive] = undefined
 
