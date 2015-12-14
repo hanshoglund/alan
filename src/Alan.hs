@@ -733,3 +733,5 @@ runR f inp outp = do
   outpCh <- f (dupChan $ fst x)
   forever $ readChan outpCh >>= outp
   return ()
+
+-- runR2 :: (Event a -> Event b) -> (M a, a -> M ())
